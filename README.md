@@ -42,14 +42,14 @@ script/
 ### 1. Install dependencies
 
 ```bash
-forge install OpenZeppelin/openzeppelin-contracts --no-commit
+forge install OpenZeppelin/openzeppelin-contracts
 ```
 
 ### 2. Set environment variables
 
 ```bash
 cp .env.example .env
-# Fill in SEPOLIA_RPC_URL, MAINNET_RPC_URL, ETHERSCAN_API_KEY, PRIVATE_KEY
+# Fill in SEPOLIA_RPC_URL, MAINNET_RPC_URL, ETHERSCAN_API_KEY
 ```
 
 ### 3. Run tests
