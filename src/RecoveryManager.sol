@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import {IRecoveryManager} from "./interfaces/IRecoveryManager.sol";
 import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleInterface.sol";
 
@@ -419,7 +419,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     function checkUpkeep(bytes calldata checkData)
         external
         view
-        override
+        override (IRecoveryManager, AutomationCompatibleInterface) 
         returns (bool upkeepNeeded, bytes memory performData)
     {
         uint256 startIndex;
@@ -494,7 +494,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *
      * @param performData ABI-encoded address[] returned by `checkUpkeep`.
      */
-    function performUpkeep(bytes calldata performData) external override nonReentrant {
+    function performUpkeep(bytes calldata performData) external override (IRecoveryManager, AutomationCompatibleInterface) nonReentrant {
         address[] memory walletsToRecover = abi.decode(performData, (address[]));
 
         uint256 length = walletsToRecover.length;
