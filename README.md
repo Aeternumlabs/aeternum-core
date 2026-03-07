@@ -1,6 +1,6 @@
-# RecoveryManager — Automated Wallet Recovery System
+# Automated Wallet Recovery System
 
-A trustless, non-custodial, Chainlink-Automation-powered Ethereum recovery system built with Foundry.
+A trustless, non-custodial, Chainlink-Automation-powered Ethereum recovery system.
 
 ---
 
