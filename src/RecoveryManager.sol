@@ -497,9 +497,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         }
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         TREASURY FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
+    // TREASURY FUNCTIONS
 
     /**
      * @notice Withdraw all accumulated subscription fees to the treasury address.
@@ -540,9 +538,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         emit TreasuryUpdated(oldTreasury, newTreasury);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                             VIEW FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
+    // VIEW FUNCTIONS
 
     /// @notice Returns the full recovery configuration for a given wallet.
     function getRecoveryConfig(address wallet) external view returns (RecoveryConfig memory) {
