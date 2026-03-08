@@ -119,9 +119,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         _;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                              CONSTRUCTOR
-    //////////////////////////////////////////////////////////////*/
+    // CONSTRUCTOR
 
     /**
      * @param treasury_ Address that may withdraw accumulated subscription fees.
