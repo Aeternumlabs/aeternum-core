@@ -387,9 +387,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         }
     }
 
-    /*//////////////////////////////////////////////////////////////
-                    CHAINLINK AUTOMATION FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
+    // CHAINLINK AUTOMATION FUNCTIONS
 
     /**
      * @notice Determines which wallets (if any) are ready for recovery.
