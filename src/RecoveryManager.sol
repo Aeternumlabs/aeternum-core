@@ -154,7 +154,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         uint256 inactivityPeriod,
         SubscriptionTier tier
     ) external payable nonReentrant {
-        // ── Checks ──────────────────────────────────────────────────────────
+        // ── Checks
         if (s_configs[msg.sender].isActive) revert RecoveryManager__AlreadyRegistered();
         if (backupAddress == address(0) || backupAddress == msg.sender) {
             revert RecoveryManager__InvalidBackupAddress();
@@ -182,7 +182,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         uint256 depositAmount = msg.value - subscriptionPayment;
 
-        // ── Effects ─────────────────────────────────────────────────────────
+        // ── Effects
         s_configs[msg.sender] = RecoveryConfig({
             backupAddress: backupAddress,
             inactivityPeriod: inactivityPeriod,
