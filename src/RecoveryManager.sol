@@ -198,7 +198,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         s_accumulatedFees += subscriptionPayment;
 
-        // ── Emit ────────────────────────────────────────────────────────────
+        // ── Emit
         emit RecoveryRegistered(msg.sender, backupAddress, inactivityPeriod, tier);
         if (depositAmount > 0) {
             emit Deposited(msg.sender, depositAmount);
