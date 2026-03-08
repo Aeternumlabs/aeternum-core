@@ -587,7 +587,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     /**
      * @notice Returns a paginated slice of registered wallet addresses.
      * @param start Inclusive start index.
-     * @param end   Exclusive end index. Clamped to array length if out of bounds.
+     * @param end Exclusive end index. Clamped to array length if out of bounds.
      */
     function getRegisteredWallets(uint256 start, uint256 end)
         external
@@ -608,9 +608,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         return result;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         INTERNAL FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
+    // INTERNAL FUNCTIONS
 
     /**
      * @dev Attempts to execute recovery for a single wallet.
@@ -631,7 +629,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     function _executeRecovery(address wallet) internal {
         RecoveryConfig storage config = s_configs[wallet];
 
-        // ── Re-validate (Checks) ────────────────────────────────────────────
+        // ── Re-validate (Checks)
         // Any of these conditions can become stale between checkUpkeep and performUpkeep.
         if (!config.isActive) return;
         if (config.balance == 0) return;
@@ -640,14 +638,14 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         address backupAddress = config.backupAddress;
         uint256 amount = config.balance;
 
-        // ── Effects (before any external call) ──────────────────────────────
+        // ── Effects (before any external call)
         config.balance = 0;
         config.isActive = false;
         _removeFromRegistry(wallet);
 
         emit RecoveryExecuted(wallet, backupAddress, amount);
 
-        // ── Interaction ─────────────────────────────────────────────────────
+        // ── Interaction
         (bool success,) = backupAddress.call{value: amount}("");
         if (!success) revert RecoveryManager__TransferFailed();
     }
@@ -685,9 +683,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         delete s_walletIndexPlusOne[wallet];
     }
 
-    /*//////////////////////////////////////////////////////////////
-                             FALLBACK / RECEIVE
-    //////////////////////////////////////////////////////////////*/
+    // FALLBACK / RECEIVE
 
     /**
      * @dev Reject plain ETH transfers to prevent accidental fund loss.

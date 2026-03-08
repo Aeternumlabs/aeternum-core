@@ -9,7 +9,7 @@ interface AutomationCompatibleInterface {
      * @notice Called by Chainlink Automation infrastructure to determine whether
      *         `performUpkeep` should be called.
      * @dev Simulation occurs off-chain; do not rely on gas costs here.
-     * @param checkData    Arbitrary bytes registered with the upkeep.
+     * @param checkData  Arbitrary bytes registered with the upkeep.
      * @return upkeepNeeded  True if `performUpkeep` should be called.
      * @return performData   Arbitrary bytes passed to `performUpkeep`.
      */

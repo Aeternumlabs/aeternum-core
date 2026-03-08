@@ -8,23 +8,21 @@ pragma solidity ^0.8.20;
  *         Defines all public/external types, events, errors, and function signatures.
  */
 interface IRecoveryManager {
-    /*//////////////////////////////////////////////////////////////
-                                 ENUMS
-    //////////////////////////////////////////////////////////////*/
+
+    // ENUMS
 
     /**
      * @notice Subscription tiers that govern monitoring frequency and minimum inactivity period.
-     * @param Free    180-day minimum inactivity period; standard monitoring.
-     * @param Premium  30-day minimum inactivity period; priority monitoring.
+     * @param Free 180-day minimum inactivity period; standard monitoring.
+     * @param Premium 30-day minimum inactivity period; priority monitoring.
      */
     enum SubscriptionTier {
         Free,
         Premium
     }
 
-    /*//////////////////////////////////////////////////////////////
-                                STRUCTS
-    //////////////////////////////////////////////////////////////*/
+    
+    // STRUCTS
 
     /**
      * @notice All configuration and state for a single registered wallet.
@@ -46,9 +44,8 @@ interface IRecoveryManager {
         bool isActive;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                                 EVENTS
-    //////////////////////////////////////////////////////////////*/
+
+    // EVENTS
 
     /// @notice Emitted when a wallet is successfully registered for recovery.
     event RecoveryRegistered(
@@ -88,9 +85,7 @@ interface IRecoveryManager {
     /// @notice Emitted when accumulated subscription fees are withdrawn to the treasury.
     event SubscriptionFeesWithdrawn(address indexed treasury, uint256 amount);
 
-    /*//////////////////////////////////////////////////////////////
-                             CUSTOM ERRORS
-    //////////////////////////////////////////////////////////////*/
+    // CUSTOM ERRORS
 
     error RecoveryManager__AlreadyRegistered();
     error RecoveryManager__NotRegistered();
@@ -105,9 +100,7 @@ interface IRecoveryManager {
     error RecoveryManager__InsufficientBalance();
     error RecoveryManager__DirectTransferNotAllowed();
 
-    /*//////////////////////////////////////////////////////////////
-                          FUNCTION SIGNATURES
-    //////////////////////////////////////////////////////////////*/
+    // FUNCTION SIGNATURES
 
     // --- User-facing ---
     function register(
