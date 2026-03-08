@@ -130,9 +130,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         s_treasury = treasury_;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         USER-FACING FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
+    // USER-FACING FUNCTIONS
 
     /**
      * @notice Register a wallet for automated recovery.
