@@ -51,9 +51,8 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *           clear error, preventing accidental ETH loss.
  */
 contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompatibleInterface {
-    /*//////////////////////////////////////////////////////////////
-                               CONSTANTS
-    //////////////////////////////////////////////////////////////*/
+
+    // CONSTANTS
 
     /// @notice Minimum inactivity period allowed for Free tier users.
     uint256 public constant MIN_INACTIVITY_PERIOD_FREE = 180 days;
