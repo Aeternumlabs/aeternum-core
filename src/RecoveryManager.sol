@@ -77,9 +77,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     /// @dev    Keeps on-chain gas consumption predictable and within Chainlink limits.
     uint256 public constant MAX_BATCH_SIZE = 10;
 
-    /*//////////////////////////////////////////////////////////////
-                            STATE VARIABLES
-    //////////////////////////////////////////////////////////////*/
+    // STATE VARIABLES
 
     /// @dev Primary configuration store. Key: registered wallet address.
     mapping(address => RecoveryConfig) private s_configs;
