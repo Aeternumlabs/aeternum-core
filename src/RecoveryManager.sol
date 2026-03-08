@@ -137,7 +137,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *
      * @dev    The caller's address is treated as the "primary wallet" being protected.
      *         Any ETH sent above the subscription fee (if Premium) is deposited into
-     *         the recovery vault. Registration with 0 balance is valid; the user can
+     *         the recovery vault. Registration with 0 balance is valid; the user can call
      *         `deposit()` later.
      *
      *         Emits {RecoveryRegistered} and, if ETH is deposited, {Deposited}.
