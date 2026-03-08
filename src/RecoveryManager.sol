@@ -105,9 +105,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      */
     address private s_treasury;
 
-    /*//////////////////////////////////////////////////////////////
-                               MODIFIERS
-    //////////////////////////////////////////////////////////////*/
+    // MODIFIERS
 
     /// @dev Reverts if the caller does not have an active recovery config.
     modifier onlyRegistered() {
