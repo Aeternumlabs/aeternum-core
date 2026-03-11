@@ -133,7 +133,7 @@ interface IRecoveryManager {
 
     function performUpkeep(bytes calldata performData) external;
 
-    // --- Treasury ---
+    // Treasury
     function withdrawSubscriptionFees() external;
 
     function updateTreasury(address newTreasury) external;
