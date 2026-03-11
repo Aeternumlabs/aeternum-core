@@ -102,7 +102,7 @@ interface IRecoveryManager {
 
     // FUNCTION SIGNATURES
 
-    // --- User-facing ---
+    // User-facing
     function register(
         address backupAddress,
         uint256 inactivityPeriod,
