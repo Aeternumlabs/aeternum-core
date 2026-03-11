@@ -138,7 +138,7 @@ interface IRecoveryManager {
 
     function updateTreasury(address newTreasury) external;
 
-    // --- View ---
+    // View
     function getRecoveryConfig(address wallet) external view returns (RecoveryConfig memory);
 
     function isRecoveryDue(address wallet) external view returns (bool);
