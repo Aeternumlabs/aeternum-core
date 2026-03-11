@@ -125,7 +125,7 @@ interface IRecoveryManager {
 
     function cancelRecovery() external;
 
-    // --- Automation ---
+    // Automation
     function checkUpkeep(bytes calldata checkData)
         external
         view
