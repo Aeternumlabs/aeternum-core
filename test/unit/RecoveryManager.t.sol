@@ -14,7 +14,7 @@ import {ReentrantAttacker} from "../mocks/ReentrantAttacker.sol";
  *         Coverage areas:
  *           • Deployment / constructor
  *           • Registration (Free & Premium, edge cases, revert paths)
- *           • Deposit / withdraw / withdrawAll
+ *           • Deposit / send / withdrawAll
  *           • Ping (activity reset)
  *           • Config updates (backup address, inactivity period)
  *           • Subscription renewal
@@ -56,7 +56,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     event RecoveryExecuted(address indexed wallet, address indexed backupAddress, uint256 amount);
     event RecoveryCancelled(address indexed wallet, uint256 refundAmount);
     event Deposited(address indexed wallet, uint256 amount);
-    event Withdrawn(address indexed wallet, uint256 amount);
+    event Sent(address indexed wallet, address indexed to, uint256 amount);
     event BackupAddressUpdated(address indexed wallet, address indexed newBackupAddress);
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
     event SubscriptionRenewed(
@@ -315,55 +315,8 @@ contract RecoveryManagerTest is StdInvariant, Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          5. WITHDRAW
+                          5. WITHDRAWALL
     //////////////////////////////////////////////////////////////*/
-
-    function test_withdraw_reducesBalance() public {
-        _registerAliceFree();
-        uint256 withdrawAmt = 0.3 ether;
-
-        vm.prank(alice);
-        rm.withdraw(withdrawAmt);
-
-        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH - withdrawAmt);
-    }
-
-    function test_withdraw_sendsETHtoCaller() public {
-        _registerAliceFree();
-        uint256 ethBefore = alice.balance;
-
-        vm.prank(alice);
-        rm.withdraw(0.5 ether);
-
-        assertEq(alice.balance, ethBefore + 0.5 ether);
-    }
-
-    function test_withdraw_resetsActivityTimer() public {
-        _registerAliceFree();
-        vm.warp(block.timestamp + 10 days);
-        uint256 warpTs = block.timestamp;
-
-        vm.prank(alice);
-        rm.withdraw(0.1 ether);
-
-        assertEq(rm.getRecoveryConfig(alice).lastActivity, warpTs);
-    }
-
-    function test_withdraw_revertsOnInsufficientBalance() public {
-        _registerAliceFree();
-
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InsufficientBalance.selector);
-        vm.prank(alice);
-        rm.withdraw(DEPOSIT_1_ETH + 1);
-    }
-
-    function test_withdraw_revertsOnZeroAmount() public {
-        _registerAliceFree();
-
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NothingToWithdraw.selector);
-        vm.prank(alice);
-        rm.withdraw(0);
-    }
 
     function test_withdrawAll_emptiesBalance() public {
         _registerAliceFree();
@@ -392,6 +345,94 @@ contract RecoveryManagerTest is StdInvariant, Test {
         vm.expectRevert(IRecoveryManager.RecoveryManager__NothingToWithdraw.selector);
         vm.prank(alice);
         rm.withdrawAll();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          5b. SEND
+    //////////////////////////////////////////////////////////////*/
+
+    function test_send_transfersETHtoRecipient() public {
+        _registerAliceFree();
+        address recipient = makeAddr("recipient");
+        uint256 sendAmt = 0.4 ether;
+
+        vm.prank(alice);
+        rm.send(recipient, sendAmt);
+
+        assertEq(recipient.balance, sendAmt);
+    }
+
+    function test_send_reducesVaultBalance() public {
+        _registerAliceFree();
+        uint256 sendAmt = 0.4 ether;
+
+        vm.prank(alice);
+        rm.send(makeAddr("recipient"), sendAmt);
+
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH - sendAmt);
+    }
+
+    function test_send_resetsActivityTimer() public {
+        _registerAliceFree();
+        vm.warp(block.timestamp + 50 days);
+
+        vm.prank(alice);
+        rm.send(makeAddr("recipient"), 0.1 ether);
+
+        assertEq(rm.getRecoveryConfig(alice).lastActivity, block.timestamp);
+    }
+
+    function test_send_emitsEvents() public {
+        _registerAliceFree();
+        address recipient = makeAddr("recipient");
+
+        vm.expectEmit(true, true, false, true);
+        emit Sent(alice, recipient, 0.3 ether);
+
+        vm.expectEmit(true, false, false, true);
+        emit ActivityPinged(alice, block.timestamp);
+
+        vm.prank(alice);
+        rm.send(recipient, 0.3 ether);
+    }
+
+    function test_send_revertsOnZeroAddress() public {
+        _registerAliceFree();
+        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidBackupAddress.selector);
+        vm.prank(alice);
+        rm.send(address(0), 0.1 ether);
+    }
+
+    function test_send_revertsOnZeroAmount() public {
+        _registerAliceFree();
+        vm.expectRevert(IRecoveryManager.RecoveryManager__NothingToWithdraw.selector);
+        vm.prank(alice);
+        rm.send(makeAddr("recipient"), 0);
+    }
+
+    function test_send_revertsOnInsufficientBalance() public {
+        _registerAliceFree();
+        vm.expectRevert(IRecoveryManager.RecoveryManager__InsufficientBalance.selector);
+        vm.prank(alice);
+        rm.send(makeAddr("recipient"), DEPOSIT_1_ETH + 1);
+    }
+
+    function test_send_revertsIfNotRegistered() public {
+        vm.expectRevert(IRecoveryManager.RecoveryManager__NotRegistered.selector);
+        vm.prank(alice);
+        rm.send(makeAddr("recipient"), 0.1 ether);
+    }
+
+    function testFuzz_send_amount(uint128 amount) public {
+        vm.assume(amount > 0 && amount <= DEPOSIT_1_ETH);
+        _registerAliceFree();
+        address recipient = makeAddr("recipient");
+
+        vm.prank(alice);
+        rm.send(recipient, amount);
+
+        assertEq(recipient.balance, amount);
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH - amount);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -952,18 +993,6 @@ contract RecoveryManagerTest is StdInvariant, Test {
         assertEq(rm.getRecoveryConfig(address(attacker)).balance, 0);
     }
 
-    function test_reentrancy_withdraw_blocked() public {
-        // If a contract that has a recovery config also has a receive() that calls withdraw,
-        // the nonReentrant guard on withdraw should prevent it.
-        ReentrantAttacker attacker = new ReentrantAttacker(address(rm));
-        deal(address(attacker), 2 ether);
-        attacker.registerAsWallet{value: 1 ether}(FREE_PERIOD);
-
-        // The attacker itself has a recovery config; withdrawal doesn't go through
-        // receive() in this case, but the test confirms state consistency.
-        assertEq(rm.getRecoveryConfig(address(attacker)).balance, 1 ether);
-    }
-
     /*//////////////////////////////////////////////////////////////
                   15. SECURITY — REGISTRY INTEGRITY
     //////////////////////////////////////////////////////////////*/
@@ -1035,18 +1064,6 @@ contract RecoveryManagerTest is StdInvariant, Test {
         rm.deposit{value: amount}();
 
         assertEq(rm.getRecoveryConfig(alice).balance, balanceBefore + amount);
-    }
-
-    /// @dev Fuzz withdraw amount: partial withdrawals must preserve invariants.
-    function testFuzz_withdraw_partial(uint128 amount) public {
-        vm.assume(amount > 0 && amount <= DEPOSIT_1_ETH);
-        _registerAliceFree();
-
-        uint256 balanceBefore = rm.getRecoveryConfig(alice).balance;
-        vm.prank(alice);
-        rm.withdraw(amount);
-
-        assertEq(rm.getRecoveryConfig(alice).balance, balanceBefore - amount);
     }
 
     /// @dev Fuzz warp time: recovery should only trigger after inactivity period.
