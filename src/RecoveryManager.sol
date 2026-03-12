@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ReentrancyGuard} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IRecoveryManager} from "./interfaces/IRecoveryManager.sol";
 import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleInterface.sol";
-
 
 /**
  * @title  RecoveryManager
  * @author Ndubuisi Ugwuja
- * @notice Trustless, non-custodial, automated Ethereum wallet recovery system.
+ * @notice Trustless, non-custodial smart vault with built-in automated recovery.
  *
  * @dev    SYSTEM OVERVIEW
  *         ─────────────────────────────────────────────────────────────────────
@@ -51,8 +50,9 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *           clear error, preventing accidental ETH loss.
  */
 contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompatibleInterface {
-
-    // CONSTANTS
+    /*//////////////////////////////////////////////////////////////
+                               CONSTANTS
+    //////////////////////////////////////////////////////////////*/
 
     /// @notice Minimum inactivity period allowed for Free tier users.
     uint256 public constant MIN_INACTIVITY_PERIOD_FREE = 180 days;
@@ -77,7 +77,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     /// @dev    Keeps on-chain gas consumption predictable and within Chainlink limits.
     uint256 public constant MAX_BATCH_SIZE = 10;
 
-    // STATE VARIABLES
+    /*//////////////////////////////////////////////////////////////
+                            STATE VARIABLES
+    //////////////////////////////////////////////////////////////*/
 
     /// @dev Primary configuration store. Key: registered wallet address.
     mapping(address => RecoveryConfig) private s_configs;
@@ -105,7 +107,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      */
     address private s_treasury;
 
-    // MODIFIERS
+    /*//////////////////////////////////////////////////////////////
+                               MODIFIERS
+    //////////////////////////////////////////////////////////////*/
 
     /// @dev Reverts if the caller does not have an active recovery config.
     modifier onlyRegistered() {
@@ -119,7 +123,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         _;
     }
 
-    // CONSTRUCTOR
+    /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @param treasury_ Address that may withdraw accumulated subscription fees.
@@ -130,14 +136,16 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         s_treasury = treasury_;
     }
 
-    // USER-FACING FUNCTIONS
+    /*//////////////////////////////////////////////////////////////
+                         USER-FACING FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @notice Register a wallet for automated recovery.
      *
      * @dev    The caller's address is treated as the "primary wallet" being protected.
      *         Any ETH sent above the subscription fee (if Premium) is deposited into
-     *         the recovery vault. Registration with 0 balance is valid; the user can call
+     *         the recovery vault. Registration with 0 balance is valid; the user can
      *         `deposit()` later.
      *
      *         Emits {RecoveryRegistered} and, if ETH is deposited, {Deposited}.
@@ -154,7 +162,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         uint256 inactivityPeriod,
         SubscriptionTier tier
     ) external payable nonReentrant {
-        // ── Checks
+        // ── Checks ──────────────────────────────────────────────────────────
         if (s_configs[msg.sender].isActive) revert RecoveryManager__AlreadyRegistered();
         if (backupAddress == address(0) || backupAddress == msg.sender) {
             revert RecoveryManager__InvalidBackupAddress();
@@ -182,7 +190,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         uint256 depositAmount = msg.value - subscriptionPayment;
 
-        // ── Effects
+        // ── Effects ─────────────────────────────────────────────────────────
         s_configs[msg.sender] = RecoveryConfig({
             backupAddress: backupAddress,
             inactivityPeriod: inactivityPeriod,
@@ -198,7 +206,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         s_accumulatedFees += subscriptionPayment;
 
-        // ── Emit
+        // ── Emit ────────────────────────────────────────────────────────────
         emit RecoveryRegistered(msg.sender, backupAddress, inactivityPeriod, tier);
         if (depositAmount > 0) {
             emit Deposited(msg.sender, depositAmount);
@@ -224,32 +232,6 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     }
 
     /**
-     * @notice Withdraw a specific amount of ETH from the recovery vault.
-     * @dev    Resets the inactivity timer. Retains the recovery configuration.
-     *         Uses CEI: state updated before the external ETH transfer.
-     *         Emits {Withdrawn} and {ActivityPinged}.
-     *
-     * @param amount Amount to withdraw in wei. Must be ≤ caller's vault balance.
-     */
-    function withdraw(uint256 amount) external onlyRegistered nonReentrant {
-        if (amount == 0) revert RecoveryManager__NothingToWithdraw();
-
-        RecoveryConfig storage config = s_configs[msg.sender];
-        if (amount > config.balance) revert RecoveryManager__InsufficientBalance();
-
-        // Effects (before external call — CEI)
-        config.balance -= amount;
-        config.lastActivity = block.timestamp;
-
-        emit Withdrawn(msg.sender, amount);
-        emit ActivityPinged(msg.sender, block.timestamp);
-
-        // Interaction
-        (bool success,) = msg.sender.call{value: amount}("");
-        if (!success) revert RecoveryManager__TransferFailed();
-    }
-
-    /**
      * @notice Withdraw the entire vault balance.
      * @dev    Does NOT cancel the recovery config. The user remains registered and
      *         can deposit again later. To fully deregister, use `cancelRecovery()`.
@@ -269,6 +251,36 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         // Interaction
         (bool success,) = msg.sender.call{value: amount}("");
+        if (!success) revert RecoveryManager__TransferFailed();
+    }
+
+    /**
+     * @notice Send ETH from the vault to any external address.
+     * @dev    This is the core "wallet send" function — allows the vault to behave
+     *         like a regular wallet where you can send funds to anyone.
+     *         Resets the inactivity timer (proves liveness).
+     *         Uses CEI: balance updated before the external ETH transfer.
+     *         Emits {Sent} and {ActivityPinged}.
+     *
+     * @param to     Recipient address. Must not be zero or the caller's own vault.
+     * @param amount Amount to send in wei. Must be ≤ caller's vault balance.
+     */
+    function send(address to, uint256 amount) external onlyRegistered nonReentrant {
+        if (to == address(0)) revert RecoveryManager__InvalidBackupAddress();
+        if (amount == 0) revert RecoveryManager__NothingToWithdraw();
+
+        RecoveryConfig storage config = s_configs[msg.sender];
+        if (amount > config.balance) revert RecoveryManager__InsufficientBalance();
+
+        // Effects (before external call — CEI)
+        config.balance -= amount;
+        config.lastActivity = block.timestamp;
+
+        emit Sent(msg.sender, to, amount);
+        emit ActivityPinged(msg.sender, block.timestamp);
+
+        // Interaction
+        (bool success,) = to.call{value: amount}("");
         if (!success) revert RecoveryManager__TransferFailed();
     }
 
@@ -387,7 +399,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         }
     }
 
-    // CHAINLINK AUTOMATION FUNCTIONS
+    /*//////////////////////////////////////////////////////////////
+                    CHAINLINK AUTOMATION FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @notice Determines which wallets (if any) are ready for recovery.
@@ -408,7 +422,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     function checkUpkeep(bytes calldata checkData)
         external
         view
-        override (IRecoveryManager, AutomationCompatibleInterface) 
+        override(IRecoveryManager, AutomationCompatibleInterface)
         returns (bool upkeepNeeded, bytes memory performData)
     {
         uint256 startIndex;
@@ -483,7 +497,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *
      * @param performData ABI-encoded address[] returned by `checkUpkeep`.
      */
-    function performUpkeep(bytes calldata performData) external override (IRecoveryManager, AutomationCompatibleInterface) nonReentrant {
+    function performUpkeep(bytes calldata performData) external override(IRecoveryManager, AutomationCompatibleInterface) nonReentrant {
         address[] memory walletsToRecover = abi.decode(performData, (address[]));
 
         uint256 length = walletsToRecover.length;
@@ -497,7 +511,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         }
     }
 
-    // TREASURY FUNCTIONS
+    /*//////////////////////////////////////////////////////////////
+                         TREASURY FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @notice Withdraw all accumulated subscription fees to the treasury address.
@@ -538,7 +554,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         emit TreasuryUpdated(oldTreasury, newTreasury);
     }
 
-    // VIEW FUNCTIONS
+    /*//////////////////////////////////////////////////////////////
+                             VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns the full recovery configuration for a given wallet.
     function getRecoveryConfig(address wallet) external view returns (RecoveryConfig memory) {
@@ -587,7 +605,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     /**
      * @notice Returns a paginated slice of registered wallet addresses.
      * @param start Inclusive start index.
-     * @param end Exclusive end index. Clamped to array length if out of bounds.
+     * @param end   Exclusive end index. Clamped to array length if out of bounds.
      */
     function getRegisteredWallets(uint256 start, uint256 end)
         external
@@ -608,7 +626,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         return result;
     }
 
-    // INTERNAL FUNCTIONS
+    /*//////////////////////////////////////////////////////////////
+                         INTERNAL FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @dev Attempts to execute recovery for a single wallet.
@@ -629,7 +649,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     function _executeRecovery(address wallet) internal {
         RecoveryConfig storage config = s_configs[wallet];
 
-        // ── Re-validate (Checks)
+        // ── Re-validate (Checks) ────────────────────────────────────────────
         // Any of these conditions can become stale between checkUpkeep and performUpkeep.
         if (!config.isActive) return;
         if (config.balance == 0) return;
@@ -638,14 +658,14 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         address backupAddress = config.backupAddress;
         uint256 amount = config.balance;
 
-        // ── Effects (before any external call)
+        // ── Effects (before any external call) ──────────────────────────────
         config.balance = 0;
         config.isActive = false;
         _removeFromRegistry(wallet);
 
         emit RecoveryExecuted(wallet, backupAddress, amount);
 
-        // ── Interaction
+        // ── Interaction ─────────────────────────────────────────────────────
         (bool success,) = backupAddress.call{value: amount}("");
         if (!success) revert RecoveryManager__TransferFailed();
     }
@@ -683,7 +703,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         delete s_walletIndexPlusOne[wallet];
     }
 
-    // FALLBACK / RECEIVE
+    /*//////////////////////////////////////////////////////////////
+                             FALLBACK / RECEIVE
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @dev Reject plain ETH transfers to prevent accidental fund loss.
