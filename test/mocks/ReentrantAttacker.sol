@@ -33,7 +33,7 @@ contract ReentrantAttacker {
     /// @notice Register the attacker as the primary wallet with this contract as backup.
 
     function registerAsWallet(uint256 inactivityPeriod, address backup) external payable {
-        IRecoveryManager(recoveryManager).register{value: msg.value}(
+        target.register{value: msg.value}(
             backup, inactivityPeriod, IRecoveryManager.SubscriptionTier.Free
         );
     }
