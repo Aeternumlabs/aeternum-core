@@ -70,6 +70,9 @@ interface IRecoveryManager {
     /// @notice Emitted when the user sends ETH from their vault to an external address.
     event Sent(address indexed wallet, address indexed to, uint256 amount);
 
+    /// @notice Emitted when a user withdraws their entire vault balance.
+    event Withdrawn(address indexed wallet, uint256 amount);
+
     /// @notice Emitted when the backup address is changed.
     event BackupAddressUpdated(address indexed wallet, address indexed newBackupAddress);
 
