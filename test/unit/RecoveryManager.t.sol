@@ -223,11 +223,10 @@ contract RecoveryManagerTest is StdInvariant, Test {
     }
 
     function test_register_revertsIfPeriodTooLong() public {
+        uint256 tooLong = rm.MAX_INACTIVITY_PERIOD() + 1;
         vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidInactivityPeriod.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            aliceBackup, rm.MAX_INACTIVITY_PERIOD() + 1, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, tooLong, IRecoveryManager.SubscriptionTier.Free);
     }
 
     function test_register_premium_revertsIfFeeInsufficient() public {
@@ -240,8 +239,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         vm.expectRevert(IRecoveryManager.RecoveryManager__DirectTransferNotAllowed.selector);
         vm.prank(alice);
         (bool sent,) = address(rm).call{value: 1 ether}("");
-        // The call will revert; the vm.expectRevert handles the assertion.
-        assertFalse(sent);
+        (sent);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -950,8 +948,9 @@ contract RecoveryManagerTest is StdInvariant, Test {
         ReentrantAttacker attacker = new ReentrantAttacker(address(rm));
         deal(address(attacker), 2 ether);
 
-        // Attacker registers with this contract as the backup (attack target)
-        attacker.registerAsWallet{value: 1 ether}(FREE_PERIOD);
+        address attackerBackup = makeAddr("attackerBackup");
+
+        attacker.registerAsWallet{value: 1 ether}(FREE_PERIOD, attackerBackup); // <-- pass backup
         attacker.enableAttack(true);
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -960,13 +959,10 @@ contract RecoveryManagerTest is StdInvariant, Test {
         victims[0] = address(attacker);
         bytes memory performData = abi.encode(victims);
 
-        // performUpkeep should succeed but reentrant calls inside attacker.receive() should fail
         rm.performUpkeep(performData);
 
-        // Despite the reentrancy attempt, attacker's balance in RM should be 0
         assertEq(rm.getRecoveryConfig(address(attacker)).balance, 0);
     }
-
     /*//////////////////////////////////////////////////////////////
                   15. SECURITY — REGISTRY INTEGRITY
     //////////////////////////////////////////////////////////////*/
