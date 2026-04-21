@@ -31,12 +31,10 @@ contract ReentrantAttacker {
     }
 
     /// @notice Register the attacker as the primary wallet with this contract as backup.
-    function registerAsWallet(uint256 inactivityPeriod) external payable {
-        if (msg.sender != owner) revert Attacker__Unauthorized();
-        target.register{value: msg.value}(
-            address(this), // backup = this contract
-            inactivityPeriod,
-            IRecoveryManager.SubscriptionTier.Free
+
+    function registerAsWallet(uint256 inactivityPeriod, address backup) external payable {
+        IRecoveryManager(recoveryManager).register{value: msg.value}(
+            backup, inactivityPeriod, IRecoveryManager.SubscriptionTier.Free
         );
     }
 
