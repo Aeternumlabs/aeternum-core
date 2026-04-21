@@ -33,9 +33,7 @@ contract ReentrantAttacker {
     /// @notice Register the attacker as the primary wallet with this contract as backup.
 
     function registerAsWallet(uint256 inactivityPeriod, address backup) external payable {
-        target.register{value: msg.value}(
-            backup, inactivityPeriod, IRecoveryManager.SubscriptionTier.Free
-        );
+        target.register{value: msg.value}(backup, inactivityPeriod, IRecoveryManager.SubscriptionTier.Free);
     }
 
     /// @notice Toggle the reentrant attack on receipt of ETH.
