@@ -62,9 +62,10 @@ contract HelperConfig is Script {
      *      REPLACE 0x000...000 with your production multisig address before deploying.
      */
     function _getMainnetConfig() internal pure returns (NetworkConfig memory) {
-        return NetworkConfig({
-            treasury: 0x0000000000000000000000000000000000000001 // TODO: replace with mainnet multisig
-        });
+        return
+            NetworkConfig({
+                treasury: 0x0000000000000000000000000000000000000001 // TODO: replace with mainnet multisig
+            });
     }
 
     /**
@@ -72,9 +73,10 @@ contract HelperConfig is Script {
      *      REPLACE with your Sepolia treasury/EOA address.
      */
     function _getSepoliaConfig() internal pure returns (NetworkConfig memory) {
-        return NetworkConfig({
-            treasury: 0x0000000000000000000000000000000000000002 // TODO: replace with Sepolia treasury
-        });
+        return
+            NetworkConfig({
+                treasury: 0x0000000000000000000000000000000000000002 // TODO: replace with Sepolia treasury
+            });
     }
 
     /**

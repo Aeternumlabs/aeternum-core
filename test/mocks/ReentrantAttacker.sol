@@ -60,9 +60,7 @@ contract ReentrantAttacker {
             try target.performUpkeep(abi.encode(new address[](0))) {} catch {}
 
             // Attempt 2: try to register a new config mid-execution
-            try target.register{value: 0}(
-                owner, 180 days, IRecoveryManager.SubscriptionTier.Free
-            ) {} catch {}
+            try target.register{value: 0}(owner, 180 days, IRecoveryManager.SubscriptionTier.Free) {} catch {}
         }
     }
 

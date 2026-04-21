@@ -157,11 +157,11 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *                         Premium: [MIN_INACTIVITY_PERIOD_PREMIUM, MAX_INACTIVITY_PERIOD]
      * @param tier             Desired subscription tier. Premium requires msg.value ≥ PREMIUM_MONTHLY_FEE.
      */
-    function register(
-        address backupAddress,
-        uint256 inactivityPeriod,
-        SubscriptionTier tier
-    ) external payable nonReentrant {
+    function register(address backupAddress, uint256 inactivityPeriod, SubscriptionTier tier)
+        external
+        payable
+        nonReentrant
+    {
         // ── Checks ──────────────────────────────────────────────────────────
         if (s_configs[msg.sender].isActive) revert RecoveryManager__AlreadyRegistered();
         if (backupAddress == address(0) || backupAddress == msg.sender) {
@@ -327,8 +327,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     function updateInactivityPeriod(uint256 newPeriod) external onlyRegistered {
         RecoveryConfig storage config = s_configs[msg.sender];
 
-        bool premiumActive = config.tier == SubscriptionTier.Premium
-            && block.timestamp <= config.subscriptionExpiry;
+        bool premiumActive = config.tier == SubscriptionTier.Premium && block.timestamp <= config.subscriptionExpiry;
 
         uint256 minPeriod = premiumActive ? MIN_INACTIVITY_PERIOD_PREMIUM : MIN_INACTIVITY_PERIOD_FREE;
 
@@ -359,9 +358,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         RecoveryConfig storage config = s_configs[msg.sender];
 
         // Stack onto existing expiry or start fresh from now
-        uint256 base = (config.subscriptionExpiry > block.timestamp)
-            ? config.subscriptionExpiry
-            : block.timestamp;
+        uint256 base = (config.subscriptionExpiry > block.timestamp) ? config.subscriptionExpiry : block.timestamp;
         uint256 newExpiry = base + SUBSCRIPTION_DURATION;
 
         // Effects
@@ -497,7 +494,11 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *
      * @param performData ABI-encoded address[] returned by `checkUpkeep`.
      */
-    function performUpkeep(bytes calldata performData) external override(IRecoveryManager, AutomationCompatibleInterface) nonReentrant {
+    function performUpkeep(bytes calldata performData)
+        external
+        override(IRecoveryManager, AutomationCompatibleInterface)
+        nonReentrant
+    {
         address[] memory walletsToRecover = abi.decode(performData, (address[]));
 
         uint256 length = walletsToRecover.length;
@@ -570,8 +571,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      */
     function isRecoveryDue(address wallet) external view returns (bool) {
         RecoveryConfig storage config = s_configs[wallet];
-        return config.isActive && config.balance > 0
-            && block.timestamp >= config.lastActivity + config.inactivityPeriod;
+        return config.isActive && config.balance > 0 && block.timestamp >= config.lastActivity + config.inactivityPeriod;
     }
 
     /**
@@ -607,11 +607,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      * @param start Inclusive start index.
      * @param end   Exclusive end index. Clamped to array length if out of bounds.
      */
-    function getRegisteredWallets(uint256 start, uint256 end)
-        external
-        view
-        returns (address[] memory)
-    {
+    function getRegisteredWallets(uint256 start, uint256 end) external view returns (address[] memory) {
         uint256 total = s_registeredWallets.length;
         if (start >= total) return new address[](0);
         if (end > total) end = total;

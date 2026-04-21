@@ -13,9 +13,7 @@ interface AutomationCompatibleInterface {
      * @return upkeepNeeded  True if `performUpkeep` should be called.
      * @return performData   Arbitrary bytes passed to `performUpkeep`.
      */
-    function checkUpkeep(bytes calldata checkData)
-        external
-        returns (bool upkeepNeeded, bytes memory performData);
+    function checkUpkeep(bytes calldata checkData) external returns (bool upkeepNeeded, bytes memory performData);
 
     /**
      * @notice Called by Chainlink Automation infrastructure to trigger work.

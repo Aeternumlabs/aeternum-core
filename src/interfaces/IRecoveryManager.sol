@@ -52,10 +52,7 @@ interface IRecoveryManager {
 
     /// @notice Emitted when a wallet is successfully registered for recovery.
     event RecoveryRegistered(
-        address indexed wallet,
-        address indexed backupAddress,
-        uint256 inactivityPeriod,
-        SubscriptionTier tier
+        address indexed wallet, address indexed backupAddress, uint256 inactivityPeriod, SubscriptionTier tier
     );
 
     /// @notice Emitted whenever the inactivity timer is reset (ping, deposit, withdraw, config update).
@@ -110,11 +107,7 @@ interface IRecoveryManager {
     //////////////////////////////////////////////////////////////*/
 
     // --- User-facing ---
-    function register(
-        address backupAddress,
-        uint256 inactivityPeriod,
-        SubscriptionTier tier
-    ) external payable;
+    function register(address backupAddress, uint256 inactivityPeriod, SubscriptionTier tier) external payable;
 
     function deposit() external payable;
 
@@ -133,10 +126,7 @@ interface IRecoveryManager {
     function cancelRecovery() external;
 
     // --- Automation ---
-    function checkUpkeep(bytes calldata checkData)
-        external
-        view
-        returns (bool upkeepNeeded, bytes memory performData);
+    function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData);
 
     function performUpkeep(bytes calldata performData) external;
 
@@ -158,8 +148,5 @@ interface IRecoveryManager {
 
     function getTreasury() external view returns (address);
 
-    function getRegisteredWallets(uint256 start, uint256 end)
-        external
-        view
-        returns (address[] memory);
+    function getRegisteredWallets(uint256 start, uint256 end) external view returns (address[] memory);
 }
