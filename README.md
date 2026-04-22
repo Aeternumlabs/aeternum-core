@@ -1,6 +1,35 @@
-# Automated Wallet Recovery System
+# Aeternum Core
 
-A trustless, non-custodial, Chainlink-Automation-powered Ethereum recovery system.
+**Aeternum Core** is the protocol layer powering autonomous, non-custodial smart wallet vaults with automated recovery.
+
+It enables users to define inactivity conditions and a recovery address. If inactivity persists beyond a chosen threshold, assets are automatically transferred—without custodians, intermediaries, or manual intervention.
+
+---
+
+## Overview
+
+Aeternum introduces a new primitive for crypto ownership: **continuity**.
+
+Traditional wallets assume constant user availability. Aeternum Core ensures that ownership persists even when the user becomes inactive.
+
+---
+
+## Core Features
+
+- **Non-Custodial Vaults**  
+  Users retain full control of their assets at all times.
+
+- **Inactivity-Based Triggers**  
+  Configurable inactivity periods initiate automated recovery.
+
+- **Automated Execution**  
+  Smart contracts integrate with decentralized automation (e.g. Chainlink) to trigger actions trustlessly.
+
+- **Recovery Mechanism**  
+  Funds are transferred to a predefined backup address after inactivity conditions are met.
+
+- **No Backdoors**  
+  Immutable logic. No admin overrides.
 
 ---
 
