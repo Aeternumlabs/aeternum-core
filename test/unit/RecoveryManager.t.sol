@@ -928,6 +928,32 @@ contract RecoveryManagerTest is StdInvariant, Test {
         assertEq(rm.getTimeUntilRecovery(alice), 0);
     }
 
+    function test_isRegistered_returnsTrueWhenRegistered() public {
+        _registerAliceFree();
+        assertTrue(rm.isRegistered(alice));
+    }
+
+    function test_isRegistered_returnsFalseWhenNotRegistered() public view {
+        assertFalse(rm.isRegistered(alice));
+    }
+
+    function test_isRegistered_returnsFalseAfterCancellation() public {
+        _registerAliceFree();
+        vm.prank(alice);
+        rm.cancelRecovery();
+        assertFalse(rm.isRegistered(alice));
+    }
+
+    function test_isRegistered_returnsFalseAfterRecoveryExecuted() public {
+        _registerAliceFree();
+        _warpPastInactivity(alice);
+
+        (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+        rm.performUpkeep(performData);
+
+        assertFalse(rm.isRegistered(alice));
+    }
+
     function test_getRegisteredWallets_pagination() public {
         _registerAliceFree();
         vm.prank(bob);
