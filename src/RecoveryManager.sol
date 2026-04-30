@@ -34,8 +34,8 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *
  *         SUBSCRIPTION TIERS
  *         ─────────────────────────────────────────────────────────────────────
- *         • Free    – minimum inactivity period of 180 days.
- *         • Premium – minimum inactivity period of 30 days; requires PREMIUM_MONTHLY_FEE
+ *         • Free    – minimum inactivity period of 365 days.
+ *         • Premium – minimum inactivity period of 180 days; requires PREMIUM_MONTHLY_FEE
  *                     per 30-day subscription period.
  *
  *         SECURITY CONSIDERATIONS
@@ -55,10 +55,10 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Minimum inactivity period allowed for Free tier users.
-    uint256 public constant MIN_INACTIVITY_PERIOD_FREE = 180 days;
+    uint256 public constant MIN_INACTIVITY_PERIOD_FREE = 365 days;
 
     /// @notice Minimum inactivity period allowed for Premium tier users.
-    uint256 public constant MIN_INACTIVITY_PERIOD_PREMIUM = 30 days;
+    uint256 public constant MIN_INACTIVITY_PERIOD_PREMIUM = 180 days;
 
     /// @notice Hard ceiling on any inactivity period (prevents permanent lock-up).
     uint256 public constant MAX_INACTIVITY_PERIOD = 3650 days;
