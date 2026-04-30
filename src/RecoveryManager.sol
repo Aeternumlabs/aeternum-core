@@ -559,6 +559,11 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
                              VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Returns true if the wallet is currently registered and active.
+    function isRegistered(address wallet) external view returns (bool) {
+        return s_configs[wallet].isActive;
+    }
+
     /// @notice Returns the full recovery configuration for a given wallet.
     function getRecoveryConfig(address wallet) external view returns (RecoveryConfig memory) {
         return s_configs[wallet];
