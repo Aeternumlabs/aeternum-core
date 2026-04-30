@@ -71,7 +71,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      * @dev    Intentionally kept low for accessibility. Can be adjusted in a future
      *         version via governance or an upgradeable proxy pattern.
      */
-    uint256 public constant PREMIUM_MONTHLY_FEE = 0.005 ether;
+    uint256 public constant PREMIUM_MONTHLY_FEE = 0.002 ether;
 
     /// @notice Maximum wallets processed in a single `performUpkeep` call.
     /// @dev    Keeps on-chain gas consumption predictable and within Chainlink limits.
