@@ -141,7 +141,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Register a wallet for automated recovery.
+     * @notice Register a wallet for recovery.
      *
      * @dev    The caller's address is treated as the "primary wallet" being protected.
      *         Any ETH sent above the subscription fee (if Premium) is deposited into
@@ -162,7 +162,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         payable
         nonReentrant
     {
-        // ── Checks ──────────────────────────────────────────────────────────
+        // Checks
         if (s_configs[msg.sender].isActive) revert RecoveryManager__AlreadyRegistered();
         if (backupAddress == address(0) || backupAddress == msg.sender) {
             revert RecoveryManager__InvalidBackupAddress();
@@ -190,7 +190,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         uint256 depositAmount = msg.value - subscriptionPayment;
 
-        // ── Effects ─────────────────────────────────────────────────────────
+        // Effects
         s_configs[msg.sender] = RecoveryConfig({
             backupAddress: backupAddress,
             inactivityPeriod: inactivityPeriod,
@@ -206,13 +206,13 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         s_accumulatedFees += subscriptionPayment;
 
-        // ── Emit ────────────────────────────────────────────────────────────
+        // Emit
         emit RecoveryRegistered(msg.sender, backupAddress, inactivityPeriod, tier);
         if (depositAmount > 0) {
             emit Deposited(msg.sender, depositAmount);
         }
 
-        // No external interactions — safe.
+        // No external interactions.
     }
 
     /**
@@ -318,7 +318,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      * @notice Change the inactivity period.
      * @dev    The minimum period enforced depends on whether the caller has an active
      *         Premium subscription at the time of the call. If the subscription has
-     *         expired, the Free minimum (180 days) applies.
+     *         expired, the Free minimum (365 days) applies.
      *         Resets the inactivity timer.
      *         Emits {InactivityPeriodUpdated} and {ActivityPinged}.
      *
@@ -645,7 +645,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     function _executeRecovery(address wallet) internal {
         RecoveryConfig storage config = s_configs[wallet];
 
-        // ── Re-validate (Checks) ────────────────────────────────────────────
+        // Re-validate (Checks)
         // Any of these conditions can become stale between checkUpkeep and performUpkeep.
         if (!config.isActive) return;
         if (config.balance == 0) return;
@@ -654,14 +654,14 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         address backupAddress = config.backupAddress;
         uint256 amount = config.balance;
 
-        // ── Effects (before any external call) ──────────────────────────────
+        // Effects (before any external call)
         config.balance = 0;
         config.isActive = false;
         _removeFromRegistry(wallet);
 
         emit RecoveryExecuted(wallet, backupAddress, amount);
 
-        // ── Interaction ─────────────────────────────────────────────────────
+        // Interaction
         (bool success,) = backupAddress.call{value: amount}("");
         if (!success) revert RecoveryManager__TransferFailed();
     }
