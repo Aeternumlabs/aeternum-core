@@ -140,7 +140,7 @@ interface IRecoveryManager {
 
     // --- View ---
     function isRegistered(address wallet) external view returns (bool);
-    
+
     function getRecoveryConfig(address wallet) external view returns (RecoveryConfig memory);
 
     function isRecoveryDue(address wallet) external view returns (bool);
