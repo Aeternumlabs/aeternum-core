@@ -500,18 +500,18 @@ contract RecoveryManagerTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(alice);
-        rm.updateInactivityPeriod(200 days);
+        rm.updateInactivityPeriod(400 days);
 
-        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, 200 days);
+        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, 400 days);
     }
 
     function test_updateInactivityPeriod_premiumUser_canUseShorterPeriod() public {
         _registerAlicePremium();
 
         vm.prank(alice);
-        rm.updateInactivityPeriod(45 days);
+        rm.updateInactivityPeriod(200 days);
 
-        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, 45 days);
+        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, 200 days);
     }
 
     function test_updateInactivityPeriod_freeUser_revertsIfBelowMin() public {
