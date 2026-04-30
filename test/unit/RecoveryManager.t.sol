@@ -42,8 +42,8 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     uint256 public constant STARTING_BALANCE = 100 ether;
     uint256 public constant DEPOSIT_1_ETH = 1 ether;
-    uint256 public constant FREE_PERIOD = 180 days;
-    uint256 public constant PREMIUM_PERIOD = 30 days;
+    uint256 public constant FREE_PERIOD = 365 days;
+    uint256 public constant PREMIUM_PERIOD = 180 days;
     uint256 public constant PREMIUM_FEE = 0.005 ether;
 
     event RecoveryRegistered(
