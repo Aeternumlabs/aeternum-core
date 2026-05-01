@@ -789,6 +789,65 @@ contract RecoveryManagerTest is StdInvariant, Test {
         assertEq(cfg.balance, 0);
     }
 
+    function test_performUpkeep_emitsRecoveryFailed_onBadBackupAddress() public {
+        // Deploy a contract that rejects ETH as the backup address
+        RejectingReceiver badBackup = new RejectingReceiver();
+
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        _warpPastInactivity(alice);
+
+        (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+
+        vm.expectEmit(true, true, false, true);
+        emit RecoveryFailed(alice, address(badBackup), DEPOSIT_1_ETH);
+
+        rm.performUpkeep(performData);
+    }
+
+    function test_performUpkeep_restoresStateOnFailedTransfer() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        _warpPastInactivity(alice);
+
+        (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+        rm.performUpkeep(performData);
+
+        // Wallet should be restored — still registered, balance intact
+        IRecoveryManager.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        assertTrue(cfg.isActive);
+        assertEq(cfg.balance, DEPOSIT_1_ETH);
+        assertEq(rm.getTotalRegistered(), 1);
+    }
+
+    function test_performUpkeep_continuesBatchAfterOneFails() public {
+        // Alice has a bad backup, bob has a good one
+        RejectingReceiver badBackup = new RejectingReceiver();
+
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        vm.warp(block.timestamp + FREE_PERIOD + 1);
+
+        (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+        rm.performUpkeep(performData);
+
+        // Alice failed — still registered with balance intact
+        assertTrue(rm.getRecoveryConfig(alice).isActive);
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
+
+        // Bob succeeded — recovered and deregistered
+        assertFalse(rm.getRecoveryConfig(bob).isActive);
+        assertEq(bobBackup.balance, DEPOSIT_1_ETH);
+    }
+
     function test_performUpkeep_transfersETHtoBackup() public {
         _registerAliceFree();
         _warpPastInactivity(alice);
