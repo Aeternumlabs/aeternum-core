@@ -59,9 +59,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     event Sent(address indexed wallet, address indexed to, uint256 amount);
     event BackupAddressUpdated(address indexed wallet, address indexed newBackupAddress);
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
-    event SubscriptionRenewed(
-        address indexed wallet, IRecoveryManager.SubscriptionTier tier, uint256 expiresAt
-    );
+    event SubscriptionRenewed(address indexed wallet, IRecoveryManager.SubscriptionTier tier, uint256 expiresAt);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event SubscriptionFeesWithdrawn(address indexed treasury, uint256 amount);
 
@@ -82,9 +80,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function _registerAliceFree() internal {
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
     }
 
     function _registerAlicePremium() internal {
@@ -153,9 +149,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         emit Deposited(alice, DEPOSIT_1_ETH);
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
     }
 
     function test_register_premium_storesConfig() public {
@@ -185,9 +179,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(
-            bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
 
         assertEq(rm.getTotalRegistered(), 2);
     }
@@ -201,33 +193,25 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
         vm.expectRevert(IRecoveryManager.RecoveryManager__AlreadyRegistered.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
     }
 
     function test_register_revertsIfBackupIsZeroAddress() public {
         vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidBackupAddress.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            address(0), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(address(0), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
     }
 
     function test_register_revertsIfBackupIsSelf() public {
         vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidBackupAddress.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            alice, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(alice, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
     }
 
     function test_register_free_revertsIfPeriodTooShort() public {
         vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidInactivityPeriod.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            aliceBackup, FREE_PERIOD - 1, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD - 1, IRecoveryManager.SubscriptionTier.Free);
     }
 
     function test_register_premium_revertsIfPeriodTooShort() public {
@@ -249,9 +233,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_register_premium_revertsIfFeeInsufficient() public {
         vm.expectRevert(IRecoveryManager.RecoveryManager__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.register{value: PREMIUM_FEE - 1}(
-            aliceBackup, PREMIUM_PERIOD, IRecoveryManager.SubscriptionTier.Premium
-        );
+        rm.register{value: PREMIUM_FEE - 1}(aliceBackup, PREMIUM_PERIOD, IRecoveryManager.SubscriptionTier.Premium);
     }
 
     function test_register_revertsOnDirectTransfer() public {
@@ -650,9 +632,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
         // Can register again
         vm.prank(alice);
-        rm.register{value: 0.5 ether}(
-            aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: 0.5 ether}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
         assertTrue(rm.getRecoveryConfig(alice).isActive);
     }
 
@@ -726,9 +706,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(
-            bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
 
         _warpPastInactivity(bob);
 
@@ -748,9 +726,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
             address backup = address(uint160(0xDEAD + i));
             deal(user, 2 ether);
             vm.prank(user);
-            rm.register{value: 1 ether}(
-                backup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-            );
+            rm.register{value: 1 ether}(backup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -896,9 +872,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         for (uint256 i = 0; i < 3; i++) {
             deal(users[i], 2 ether);
             vm.prank(users[i]);
-            rm.register{value: DEPOSIT_1_ETH}(
-                backups[i], FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-            );
+            rm.register{value: DEPOSIT_1_ETH}(backups[i], FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -1068,9 +1042,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         rm.register{value: 1 ether}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
 
         vm.prank(carol);
-        rm.register{value: 1 ether}(
-            carolBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: 1 ether}(carolBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
 
         vm.prank(alice);
         rm.cancelRecovery(); // triggers swap-and-pop
@@ -1088,9 +1060,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         for (uint256 i = 0; i < 3; i++) {
             deal(users[i], 2 ether);
             vm.prank(users[i]);
-            rm.register{value: 1 ether}(
-                backups[i], FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free
-            );
+            rm.register{value: 1 ether}(backups[i], FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -1109,9 +1079,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         period = bound(period, FREE_PERIOD, rm.MAX_INACTIVITY_PERIOD());
 
         vm.prank(alice);
-        rm.register{value: 1 ether}(
-            aliceBackup, period, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: 1 ether}(aliceBackup, period, IRecoveryManager.SubscriptionTier.Free);
 
         assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, period);
     }
@@ -1163,11 +1131,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         }
 
         // Contract balance must cover user balances + accumulated fees
-        assertGe(
-            address(rm).balance,
-            sumOfUserBalances,
-            "Contract ETH insufficient to cover user balances"
-        );
+        assertGe(address(rm).balance, sumOfUserBalances, "Contract ETH insufficient to cover user balances");
     }
 
     /**
@@ -1179,10 +1143,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         address[] memory wallets = rm.getRegisteredWallets(0, total);
 
         for (uint256 i = 0; i < wallets.length; i++) {
-            assertTrue(
-                rm.getRecoveryConfig(wallets[i]).isActive,
-                "Inactive wallet found in registry"
-            );
+            assertTrue(rm.getRecoveryConfig(wallets[i]).isActive, "Inactive wallet found in registry");
         }
     }
 
@@ -1190,10 +1151,6 @@ contract RecoveryManagerTest is StdInvariant, Test {
      * @notice Accumulated fees must never exceed the contract's ETH balance.
      */
     function invariant_feesNeverExceedContractBalance() public view {
-        assertLe(
-            rm.getAccumulatedFees(),
-            address(rm).balance,
-            "Accumulated fees exceed contract balance"
-        );
+        assertLe(rm.getAccumulatedFees(), address(rm).balance, "Accumulated fees exceed contract balance");
     }
 }
