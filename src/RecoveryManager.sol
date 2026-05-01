@@ -128,6 +128,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     //////////////////////////////////////////////////////////////*/
 
     /**
+     * @notice Initialises the contract and sets the treasury address.
      * @param treasury_ Address that may withdraw accumulated subscription fees.
      *                  Recommended to be a multi-sig (e.g. Gnosis Safe) in production.
      */
@@ -566,11 +567,13 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns true if the wallet is currently registered and active.
+    /// @param wallet The wallet address to query.
     function isRegistered(address wallet) external view returns (bool) {
         return s_configs[wallet].isActive;
     }
 
     /// @notice Returns the full recovery configuration for a given wallet.
+    /// @param wallet The wallet address to query.
     function getRecoveryConfig(address wallet) external view returns (RecoveryConfig memory) {
         return s_configs[wallet];
     }
@@ -579,6 +582,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      * @notice Returns true if the wallet's recovery conditions are currently met.
      * @dev    A wallet is "due" when it is active, has a non-zero balance, and the
      *         inactivity period has fully elapsed since `lastActivity`.
+     * @param  wallet The wallet address to query.
      */
     function isRecoveryDue(address wallet) external view returns (bool) {
         RecoveryConfig storage config = s_configs[wallet];
@@ -588,6 +592,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     /**
      * @notice Returns the number of seconds remaining before recovery can be triggered.
      * @dev    Returns 0 if recovery is already due or the wallet is not registered.
+     * @param  wallet The wallet address to query.
      */
     function getTimeUntilRecovery(address wallet) external view returns (uint256) {
         RecoveryConfig storage config = s_configs[wallet];
@@ -638,6 +643,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     //////////////////////////////////////////////////////////////*/
 
     /**
+     * @notice Executes recovery for a single wallet, transferring its balance to the backup address.
      * @dev Attempts to execute recovery for a single wallet.
      *      Re-validates all conditions so stale or duplicate entries are safely skipped.
      *
@@ -678,7 +684,8 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     }
 
     /**
-     * @dev Removes `wallet` from `s_registeredWallets` in O(1) using swap-and-pop.
+     * @notice Removes a wallet from the registered wallets array in O(1) using swap-and-pop.
+     * @dev Removes `wallet` from `s_registeredWallets`.
      *
      *      Algorithm:
      *        1. Look up the wallet's 1-indexed position.
@@ -715,8 +722,8 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev Reject plain ETH transfers to prevent accidental fund loss.
-     *      Users must interact through `register()` or `deposit()`.
+     * @notice Rejects plain ETH transfers to prevent accidental fund loss
+     * @dev Users must interact through `register()` or `deposit()`.
      */
     receive() external payable {
         revert RecoveryManager__DirectTransferNotAllowed();
