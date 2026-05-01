@@ -30,10 +30,14 @@ contract ReentrantAttacker {
         owner = msg.sender;
     }
 
-    /// @notice Register the attacker as the primary wallet with this contract as backup.
-
+    /// @notice Register the attacker as the primary wallet with a specified backup address.
     function registerAsWallet(uint256 inactivityPeriod, address backup) external payable {
-        target.register{value: msg.value}(backup, inactivityPeriod, IRecoveryManager.SubscriptionTier.Free);
+        if (msg.sender != owner) revert Attacker__Unauthorized();
+        target.register{value: msg.value}(
+            backup,
+            inactivityPeriod,
+            IRecoveryManager.SubscriptionTier.Free
+        );
     }
 
     /// @notice Toggle the reentrant attack on receipt of ETH.
@@ -56,7 +60,9 @@ contract ReentrantAttacker {
             try target.performUpkeep(abi.encode(new address[](0))) {} catch {}
 
             // Attempt 2: try to register a new config mid-execution
-            try target.register{value: 0}(owner, 180 days, IRecoveryManager.SubscriptionTier.Free) {} catch {}
+            try target.register{value: 0}(
+                owner, 180 days, IRecoveryManager.SubscriptionTier.Free
+            ) {} catch {}
         }
     }
 
