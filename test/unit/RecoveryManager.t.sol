@@ -55,6 +55,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     );
     event ActivityPinged(address indexed wallet, uint256 timestamp);
     event RecoveryExecuted(address indexed wallet, address indexed backupAddress, uint256 amount);
+    event RecoveryFailed(address indexed wallet, address indexed backupAddress, uint256 amount);
     event RecoveryCancelled(address indexed wallet, uint256 refundAmount);
     event Deposited(address indexed wallet, uint256 amount);
     event Sent(address indexed wallet, address indexed to, uint256 amount);
