@@ -6,6 +6,7 @@ import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {RecoveryManager} from "../../src/RecoveryManager.sol";
 import {IRecoveryManager} from "../../src/interfaces/IRecoveryManager.sol";
 import {ReentrantAttacker} from "../mocks/ReentrantAttacker.sol";
+import {RejectingReceiver} from "../mocks/RejectingReceiver.sol";
 
 /**
  * @title  RecoveryManagerTest
