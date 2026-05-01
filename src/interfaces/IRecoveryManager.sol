@@ -61,6 +61,9 @@ interface IRecoveryManager {
     /// @notice Emitted when Chainlink Automation executes a recovery.
     event RecoveryExecuted(address indexed wallet, address indexed backupAddress, uint256 amount);
 
+    /// @notice Emitted when a recovery transfer fails — wallet state is restored for retry.
+    event RecoveryFailed(address indexed wallet, address indexed backupAddress, uint256 amount);
+
     /// @notice Emitted when a user voluntarily cancels their recovery and withdraws funds.
     event RecoveryCancelled(address indexed wallet, uint256 refundAmount);
 
