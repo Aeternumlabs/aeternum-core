@@ -433,7 +433,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         }
 
         // Cap batchSize to MAX_BATCH_SIZE to mirror performUpkeep limits
-        if (batchSize > MAX_BATCH_SIZE) batchSize = MAX_BATCH_SIZE;
+        if (batchSize > MAX_BATCH_SIZE) {
+            batchSize = MAX_BATCH_SIZE;
+        }
 
         uint256 totalWallets = s_registeredWallets.length;
 
