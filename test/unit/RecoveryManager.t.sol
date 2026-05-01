@@ -1014,7 +1014,8 @@ contract RecoveryManagerTest is StdInvariant, Test {
         deal(address(attacker), 2 ether);
 
         // Attacker registers with this contract as the backup (attack target)
-        attacker.registerAsWallet{value: 1 ether}(FREE_PERIOD);
+        address attackerBackup = makeAddr("attackerBackup");
+        attacker.registerAsWallet{value: 1 ether}(FREE_PERIOD, attackerBackup);
         attacker.enableAttack(true);
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
