@@ -652,10 +652,10 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *        2. Effects — zero the balance, mark inactive, remove from registry.
      *        3. Interact — transfer ETH to backupAddress.
      *
-     *      If the ETH transfer to `backupAddress` fails (e.g. the backup address is a
-     *      contract that reverts), the entire call reverts. This is intentional: it
-     *      preserves fund safety and signals misconfiguration to the Automation node,
-     *      which will retry.
+     *      * If the ETH transfer to `backupAddress` fails (e.g. the backup address is a
+     *      * contract that reverts), state is restored and a {RecoveryFailed} event is
+     *      * emitted. The wallet re-enters the monitoring queue for the next upkeep cycle.
+     *      * This prevents one bad backup address from blocking the rest of the batch.
      *
      * @param wallet The wallet address to attempt recovery on.
      */
@@ -676,11 +676,21 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         config.isActive = false;
         _removeFromRegistry(wallet);
 
-        emit RecoveryExecuted(wallet, backupAddress, amount);
-
         // Interaction
         (bool success,) = backupAddress.call{value: amount}("");
-        if (!success) revert RecoveryManager__TransferFailed();
+
+        if (!success) {
+            // Restore state so wallet can be retried in a future upkeep cycle
+            config.balance = amount;
+            config.isActive = true;
+            s_registeredWallets.push(wallet);
+            s_walletIndexPlusOne[wallet] = s_registeredWallets.length;
+
+            emit RecoveryFailed(wallet, backupAddress, amount);
+            return;
+        }
+
+        emit RecoveryExecuted(wallet, backupAddress, amount);
     }
 
     /**
