@@ -494,6 +494,10 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *         Security: guarded by `nonReentrant`. CEI is enforced inside
      *         `_executeRecovery` — all state changes precede the ETH transfer.
      *
+     *         Slither: calls-loop is acknowledged. External ETH transfers to distinct
+     *         backup addresses inherently require a loop. Mitigated by nonReentrant,
+     *         CEI pattern, re-validation per iteration, and MAX_BATCH_SIZE cap.
+     *
      * @param performData ABI-encoded address[] returned by `checkUpkeep`.
      */
     function performUpkeep(bytes calldata performData)
