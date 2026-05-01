@@ -42,9 +42,9 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     uint256 public constant STARTING_BALANCE = 100 ether;
     uint256 public constant DEPOSIT_1_ETH = 1 ether;
-    uint256 public constant FREE_PERIOD = 180 days;
-    uint256 public constant PREMIUM_PERIOD = 30 days;
-    uint256 public constant PREMIUM_FEE = 0.005 ether;
+    uint256 public constant FREE_PERIOD = 365 days;
+    uint256 public constant PREMIUM_PERIOD = 180 days;
+    uint256 public constant PREMIUM_FEE = 0.002 ether;
 
     event RecoveryRegistered(
         address indexed wallet,
@@ -223,11 +223,10 @@ contract RecoveryManagerTest is StdInvariant, Test {
     }
 
     function test_register_revertsIfPeriodTooLong() public {
+        uint256 tooLong = rm.MAX_INACTIVITY_PERIOD() + 1;
         vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidInactivityPeriod.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            aliceBackup, rm.MAX_INACTIVITY_PERIOD() + 1, IRecoveryManager.SubscriptionTier.Free
-        );
+        rm.register{value: 0}(aliceBackup, tooLong, IRecoveryManager.SubscriptionTier.Free);
     }
 
     function test_register_premium_revertsIfFeeInsufficient() public {
@@ -240,8 +239,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         vm.expectRevert(IRecoveryManager.RecoveryManager__DirectTransferNotAllowed.selector);
         vm.prank(alice);
         (bool sent,) = address(rm).call{value: 1 ether}("");
-        // The call will revert; the vm.expectRevert handles the assertion.
-        assertFalse(sent);
+        (sent);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -502,18 +500,18 @@ contract RecoveryManagerTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(alice);
-        rm.updateInactivityPeriod(200 days);
+        rm.updateInactivityPeriod(400 days);
 
-        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, 200 days);
+        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, 400 days);
     }
 
     function test_updateInactivityPeriod_premiumUser_canUseShorterPeriod() public {
         _registerAlicePremium();
 
         vm.prank(alice);
-        rm.updateInactivityPeriod(45 days);
+        rm.updateInactivityPeriod(200 days);
 
-        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, 45 days);
+        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, 200 days);
     }
 
     function test_updateInactivityPeriod_freeUser_revertsIfBelowMin() public {
