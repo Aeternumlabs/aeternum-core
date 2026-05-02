@@ -56,4 +56,4 @@ jobs:
         run: npm install -g solhint
 
       - name: Run solhint
-        run: solhint src/RecoveryManager.sol
+        run: solhint src/AeternumVault.sol

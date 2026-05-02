@@ -2,12 +2,12 @@
 pragma solidity ^0.8.24;
 
 /**
- * @title  IRecoveryManager
+ * @title  IAeternumVault
  * @author Ndubuisi Ugwuja
- * @notice Complete interface for the RecoveryManager contract.
+ * @notice Complete interface for the AeternumVault contract.
  *         Defines all public/external types, events, errors, and function signatures.
  */
-interface IRecoveryManager {
+interface IAeternumVault {
     /*//////////////////////////////////////////////////////////////
                                  ENUMS
     //////////////////////////////////////////////////////////////*/
@@ -102,19 +102,19 @@ interface IRecoveryManager {
                              CUSTOM ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    error RecoveryManager__AlreadyRegistered();
-    error RecoveryManager__NotRegistered();
-    error RecoveryManager__InvalidBackupAddress();
-    error RecoveryManager__InvalidInactivityPeriod();
-    error RecoveryManager__ZeroAddress();
-    error RecoveryManager__TransferFailed();
-    error RecoveryManager__NotAuthorized();
-    error RecoveryManager__InsufficientSubscriptionFee();
-    error RecoveryManager__MaxBatchSizeExceeded();
-    error RecoveryManager__NothingToWithdraw();
-    error RecoveryManager__InsufficientBalance();
-    error RecoveryManager__DirectTransferNotAllowed();
-    error RecoveryManager__WalletAbandoned();
+    error AeternumVault__AlreadyRegistered();
+    error AeternumVault__NotRegistered();
+    error AeternumVault__InvalidBackupAddress();
+    error AeternumVault__InvalidInactivityPeriod();
+    error AeternumVault__ZeroAddress();
+    error AeternumVault__TransferFailed();
+    error AeternumVault__NotAuthorized();
+    error AeternumVault__InsufficientSubscriptionFee();
+    error AeternumVault__MaxBatchSizeExceeded();
+    error AeternumVault__NothingToWithdraw();
+    error AeternumVault__InsufficientBalance();
+    error AeternumVault__DirectTransferNotAllowed();
+    error AeternumVault__WalletAbandoned();
 
     /*//////////////////////////////////////////////////////////////
                           FUNCTION SIGNATURES

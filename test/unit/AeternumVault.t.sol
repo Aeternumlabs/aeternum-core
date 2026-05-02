@@ -3,14 +3,14 @@ pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
-import {RecoveryManager} from "../../src/RecoveryManager.sol";
-import {IRecoveryManager} from "../../src/interfaces/IRecoveryManager.sol";
+import {AeternumVault} from "../../src/AeternumVault.sol";
+import {IAeternumVault} from "../../src/interfaces/IAeternumVault.sol";
 import {ReentrantAttacker} from "../mocks/ReentrantAttacker.sol";
 import {RejectingReceiver} from "../mocks/RejectingReceiver.sol";
 
 /**
- * @title  RecoveryManagerTest
- * @notice Comprehensive test suite for RecoveryManager.
+ * @title  AeternumVaultTest
+ * @notice Comprehensive test suite for AeternumVault.
  *
  *         Coverage areas:
  *           • Deployment / constructor
@@ -26,12 +26,12 @@ import {RejectingReceiver} from "../mocks/RejectingReceiver.sol";
  *           • Fuzz tests
  *           • Invariant tests
  */
-contract RecoveryManagerTest is StdInvariant, Test {
+contract AeternumVaultTest is StdInvariant, Test {
     /*//////////////////////////////////////////////////////////////
                               TEST SETUP
     //////////////////////////////////////////////////////////////*/
 
-    RecoveryManager public rm;
+    AeternumVault public rm;
 
     address public treasury = makeAddr("treasury");
     address public alice = makeAddr("alice");
@@ -51,7 +51,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         address indexed wallet,
         address indexed backupAddress,
         uint256 inactivityPeriod,
-        IRecoveryManager.SubscriptionTier tier
+        IAeternumVault.SubscriptionTier tier
     );
     event ActivityPinged(address indexed wallet, uint256 timestamp);
     event RecoveryExecuted(address indexed wallet, address indexed backupAddress, uint256 amount);
@@ -62,18 +62,18 @@ contract RecoveryManagerTest is StdInvariant, Test {
     event Sent(address indexed wallet, address indexed to, uint256 amount);
     event BackupAddressUpdated(address indexed wallet, address indexed newBackupAddress);
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
-    event SubscriptionRenewed(address indexed wallet, IRecoveryManager.SubscriptionTier tier, uint256 expiresAt);
+    event SubscriptionRenewed(address indexed wallet, IAeternumVault.SubscriptionTier tier, uint256 expiresAt);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event SubscriptionFeesWithdrawn(address indexed treasury, uint256 amount);
 
     function setUp() public {
-        rm = new RecoveryManager(treasury);
+        rm = new AeternumVault(treasury);
 
         deal(alice, STARTING_BALANCE);
         deal(bob, STARTING_BALANCE);
         deal(carol, STARTING_BALANCE);
 
-        // Expose RecoveryManager as the invariant target
+        // Expose AeternumVault as the invariant target
         targetContract(address(rm));
     }
 
@@ -83,19 +83,19 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function _registerAliceFree() internal {
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
     }
 
     function _registerAlicePremium() internal {
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH + PREMIUM_FEE}(
-            aliceBackup, PREMIUM_PERIOD, IRecoveryManager.SubscriptionTier.Premium
+            aliceBackup, PREMIUM_PERIOD, IAeternumVault.SubscriptionTier.Premium
         );
     }
 
     /// @dev Warp past alice's inactivity period.
     function _warpPastInactivity(address wallet) internal {
-        IRecoveryManager.RecoveryConfig memory cfg = rm.getRecoveryConfig(wallet);
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(wallet);
         vm.warp(cfg.lastActivity + cfg.inactivityPeriod + 1);
     }
 
@@ -113,8 +113,8 @@ contract RecoveryManagerTest is StdInvariant, Test {
     }
 
     function test_constructor_revertsOnZeroTreasury() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__ZeroAddress.selector);
-        new RecoveryManager(address(0));
+        vm.expectRevert(IAeternumVault.AeternumVault__ZeroAddress.selector);
+        new AeternumVault(address(0));
     }
 
     function test_constructor_initialState() public view {
@@ -129,12 +129,12 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_register_free_storesConfig() public {
         _registerAliceFree();
 
-        IRecoveryManager.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertEq(cfg.backupAddress, aliceBackup);
         assertEq(cfg.inactivityPeriod, FREE_PERIOD);
         assertEq(cfg.balance, DEPOSIT_1_ETH);
         assertEq(cfg.lastActivity, block.timestamp);
-        assertEq(uint256(cfg.tier), uint256(IRecoveryManager.SubscriptionTier.Free));
+        assertEq(uint256(cfg.tier), uint256(IAeternumVault.SubscriptionTier.Free));
         assertEq(cfg.subscriptionExpiry, 0);
         assertTrue(cfg.isActive);
     }
@@ -146,21 +146,21 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_register_free_emitsEvents() public {
         vm.expectEmit(true, true, false, true);
-        emit RecoveryRegistered(alice, aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        emit RecoveryRegistered(alice, aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         vm.expectEmit(true, false, false, true);
         emit Deposited(alice, DEPOSIT_1_ETH);
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
     }
 
     function test_register_premium_storesConfig() public {
         _registerAlicePremium();
 
-        IRecoveryManager.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertEq(cfg.balance, DEPOSIT_1_ETH); // fee excluded from balance
-        assertEq(uint256(cfg.tier), uint256(IRecoveryManager.SubscriptionTier.Premium));
+        assertEq(uint256(cfg.tier), uint256(IAeternumVault.SubscriptionTier.Premium));
         assertEq(cfg.subscriptionExpiry, block.timestamp + 30 days);
     }
 
@@ -171,9 +171,9 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_register_withZeroDeposit_isValid() public {
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
-        IRecoveryManager.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertEq(cfg.balance, 0);
         assertTrue(cfg.isActive);
     }
@@ -182,7 +182,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         assertEq(rm.getTotalRegistered(), 2);
     }
@@ -194,52 +194,52 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_register_revertsIfAlreadyRegistered() public {
         _registerAliceFree();
 
-        vm.expectRevert(IRecoveryManager.RecoveryManager__AlreadyRegistered.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__AlreadyRegistered.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
     }
 
     function test_register_revertsIfBackupIsZeroAddress() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidBackupAddress.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidBackupAddress.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(0), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(0), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
     }
 
     function test_register_revertsIfBackupIsSelf() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidBackupAddress.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidBackupAddress.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(alice, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(alice, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
     }
 
     function test_register_free_revertsIfPeriodTooShort() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidInactivityPeriod.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD - 1, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD - 1, IAeternumVault.SubscriptionTier.Free);
     }
 
     function test_register_premium_revertsIfPeriodTooShort() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidInactivityPeriod.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH + PREMIUM_FEE}(
-            aliceBackup, PREMIUM_PERIOD - 1, IRecoveryManager.SubscriptionTier.Premium
+            aliceBackup, PREMIUM_PERIOD - 1, IAeternumVault.SubscriptionTier.Premium
         );
     }
 
     function test_register_revertsIfPeriodTooLong() public {
         uint256 tooLong = rm.MAX_INACTIVITY_PERIOD() + 1;
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidInactivityPeriod.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, tooLong, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 0}(aliceBackup, tooLong, IAeternumVault.SubscriptionTier.Free);
     }
 
     function test_register_premium_revertsIfFeeInsufficient() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InsufficientSubscriptionFee.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.register{value: PREMIUM_FEE - 1}(aliceBackup, PREMIUM_PERIOD, IRecoveryManager.SubscriptionTier.Premium);
+        rm.register{value: PREMIUM_FEE - 1}(aliceBackup, PREMIUM_PERIOD, IAeternumVault.SubscriptionTier.Premium);
     }
 
     function test_register_revertsOnDirectTransfer() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__DirectTransferNotAllowed.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__DirectTransferNotAllowed.selector);
         vm.prank(alice);
         (bool sent,) = address(rm).call{value: 1 ether}("");
         (sent);
@@ -284,7 +284,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     }
 
     function test_deposit_revertsIfNotRegistered() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NotRegistered.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NotRegistered.selector);
         vm.prank(alice);
         rm.deposit{value: 0.5 ether}();
     }
@@ -292,7 +292,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_deposit_revertsIfZeroValue() public {
         _registerAliceFree();
 
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InsufficientBalance.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InsufficientBalance.selector);
         vm.prank(alice);
         rm.deposit{value: 0}();
     }
@@ -323,9 +323,9 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_withdrawAll_revertsIfZeroBalance() public {
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NothingToWithdraw.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NothingToWithdraw.selector);
         vm.prank(alice);
         rm.withdrawAll();
     }
@@ -381,27 +381,27 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_send_revertsOnZeroAddress() public {
         _registerAliceFree();
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidBackupAddress.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidBackupAddress.selector);
         vm.prank(alice);
         rm.send(address(0), 0.1 ether);
     }
 
     function test_send_revertsOnZeroAmount() public {
         _registerAliceFree();
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NothingToWithdraw.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NothingToWithdraw.selector);
         vm.prank(alice);
         rm.send(makeAddr("recipient"), 0);
     }
 
     function test_send_revertsOnInsufficientBalance() public {
         _registerAliceFree();
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InsufficientBalance.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InsufficientBalance.selector);
         vm.prank(alice);
         rm.send(makeAddr("recipient"), DEPOSIT_1_ETH + 1);
     }
 
     function test_send_revertsIfNotRegistered() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NotRegistered.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NotRegistered.selector);
         vm.prank(alice);
         rm.send(makeAddr("recipient"), 0.1 ether);
     }
@@ -446,7 +446,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     }
 
     function test_ping_revertsIfNotRegistered() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NotRegistered.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NotRegistered.selector);
         vm.prank(alice);
         rm.ping();
     }
@@ -487,14 +487,14 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_updateBackupAddress_revertsOnZero() public {
         _registerAliceFree();
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidBackupAddress.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidBackupAddress.selector);
         vm.prank(alice);
         rm.updateBackupAddress(address(0));
     }
 
     function test_updateBackupAddress_revertsOnSelf() public {
         _registerAliceFree();
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidBackupAddress.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidBackupAddress.selector);
         vm.prank(alice);
         rm.updateBackupAddress(alice);
     }
@@ -519,7 +519,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_updateInactivityPeriod_freeUser_revertsIfBelowMin() public {
         _registerAliceFree();
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidInactivityPeriod.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
         rm.updateInactivityPeriod(FREE_PERIOD - 1);
     }
@@ -531,7 +531,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         vm.warp(block.timestamp + 31 days);
 
         // Should now enforce FREE minimum
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InvalidInactivityPeriod.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
         rm.updateInactivityPeriod(45 days); // 45 < 180 days free min
     }
@@ -546,8 +546,8 @@ contract RecoveryManagerTest is StdInvariant, Test {
         vm.prank(alice);
         rm.renewSubscription{value: PREMIUM_FEE}();
 
-        IRecoveryManager.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
-        assertEq(uint256(cfg.tier), uint256(IRecoveryManager.SubscriptionTier.Premium));
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        assertEq(uint256(cfg.tier), uint256(IAeternumVault.SubscriptionTier.Premium));
         assertEq(cfg.subscriptionExpiry, block.timestamp + 30 days);
     }
 
@@ -573,7 +573,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_renewSubscription_revertsIfFeeInsufficient() public {
         _registerAliceFree();
-        vm.expectRevert(IRecoveryManager.RecoveryManager__InsufficientSubscriptionFee.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
         rm.renewSubscription{value: PREMIUM_FEE - 1}();
     }
@@ -633,19 +633,19 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
         // Can register again
         vm.prank(alice);
-        rm.register{value: 0.5 ether}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 0.5 ether}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
         assertTrue(rm.getRecoveryConfig(alice).isActive);
     }
 
     function test_cancelRecovery_revertsIfNotRegistered() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NotRegistered.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NotRegistered.selector);
         vm.prank(alice);
         rm.cancelRecovery();
     }
 
     function test_cancelRecovery_withZeroBalance_noTransfer() public {
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
         uint256 ethBefore = alice.balance;
 
         vm.prank(alice);
@@ -695,7 +695,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_checkUpkeep_returnsFalseIfBalanceZero() public {
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
         _warpPastInactivity(alice);
 
         (bool needed,) = rm.checkUpkeep(bytes(""));
@@ -707,7 +707,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         _warpPastInactivity(bob);
 
@@ -727,7 +727,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
             address backup = address(uint160(0xDEAD + i));
             deal(user, 2 ether);
             vm.prank(user);
-            rm.register{value: 1 ether}(backup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+            rm.register{value: 1 ether}(backup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -787,7 +787,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         rm.performUpkeep(performData);
 
         // Config should be inactive and balance zeroed
-        IRecoveryManager.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertFalse(cfg.isActive);
         assertEq(cfg.balance, 0);
     }
@@ -797,7 +797,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         RejectingReceiver badBackup = new RejectingReceiver();
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         _warpPastInactivity(alice);
 
@@ -813,7 +813,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         RejectingReceiver badBackup = new RejectingReceiver();
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         _warpPastInactivity(alice);
 
@@ -821,7 +821,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         rm.performUpkeep(performData);
 
         // Wallet should be restored — still registered, balance intact
-        IRecoveryManager.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertTrue(cfg.isActive);
         assertEq(cfg.balance, DEPOSIT_1_ETH);
         assertEq(rm.getTotalRegistered(), 1);
@@ -832,10 +832,10 @@ contract RecoveryManagerTest is StdInvariant, Test {
         RejectingReceiver badBackup = new RejectingReceiver();
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
 
@@ -920,7 +920,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         address[] memory tooMany = new address[](overSize);
         bytes memory performData = abi.encode(tooMany);
 
-        vm.expectRevert(IRecoveryManager.RecoveryManager__MaxBatchSizeExceeded.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__MaxBatchSizeExceeded.selector);
         rm.performUpkeep(performData);
     }
 
@@ -932,7 +932,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         for (uint256 i = 0; i < 3; i++) {
             deal(users[i], 2 ether);
             vm.prank(users[i]);
-            rm.register{value: DEPOSIT_1_ETH}(backups[i], FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+            rm.register{value: DEPOSIT_1_ETH}(backups[i], FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -955,7 +955,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_executeRecovery_incrementsFailedAttempts() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
         _warpPastInactivity(alice);
 
         (, bytes memory performData) = rm.checkUpkeep(bytes(""));
@@ -967,7 +967,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_executeRecovery_emitsRecoveryAbandoned() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS() - 1; i++) {
             _warpPastInactivity(alice);
@@ -987,7 +987,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_executeRecovery_abandonedAfterMaxAttempts() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1007,7 +1007,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_abandonedWallet_canWithdrawAll() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1026,7 +1026,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_abandonedWallet_canSend() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1044,7 +1044,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_abandonedWallet_canUpdateBackupAddress() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1062,7 +1062,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_abandonedWallet_cannotReRegister() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1070,15 +1070,15 @@ contract RecoveryManagerTest is StdInvariant, Test {
             rm.performUpkeep(performData);
         }
 
-        vm.expectRevert(IRecoveryManager.RecoveryManager__WalletAbandoned.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
     }
 
     function test_abandonedWallet_checkUpkeepSkipsIt() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1119,13 +1119,13 @@ contract RecoveryManagerTest is StdInvariant, Test {
 
     function test_withdrawSubscriptionFees_revertsIfNotTreasury() public {
         _registerAlicePremium();
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NotAuthorized.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NotAuthorized.selector);
         vm.prank(alice);
         rm.withdrawSubscriptionFees();
     }
 
     function test_withdrawSubscriptionFees_revertsIfNothingAccumulated() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NothingToWithdraw.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NothingToWithdraw.selector);
         vm.prank(treasury);
         rm.withdrawSubscriptionFees();
     }
@@ -1143,13 +1143,13 @@ contract RecoveryManagerTest is StdInvariant, Test {
     }
 
     function test_updateTreasury_revertsIfNotTreasury() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__NotAuthorized.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__NotAuthorized.selector);
         vm.prank(alice);
         rm.updateTreasury(alice);
     }
 
     function test_updateTreasury_revertsOnZeroAddress() public {
-        vm.expectRevert(IRecoveryManager.RecoveryManager__ZeroAddress.selector);
+        vm.expectRevert(IAeternumVault.AeternumVault__ZeroAddress.selector);
         vm.prank(treasury);
         rm.updateTreasury(address(0));
     }
@@ -1200,7 +1200,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     function test_getRegisteredWallets_pagination() public {
         _registerAliceFree();
         vm.prank(bob);
-        rm.register{value: 0}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 0}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         address[] memory page = rm.getRegisteredWallets(0, 2);
         assertEq(page.length, 2);
@@ -1244,10 +1244,10 @@ contract RecoveryManagerTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(bob);
-        rm.register{value: 1 ether}(bobBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 1 ether}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         vm.prank(carol);
-        rm.register{value: 1 ether}(carolBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 1 ether}(carolBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
 
         vm.prank(alice);
         rm.cancelRecovery(); // triggers swap-and-pop
@@ -1265,7 +1265,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         for (uint256 i = 0; i < 3; i++) {
             deal(users[i], 2 ether);
             vm.prank(users[i]);
-            rm.register{value: 1 ether}(backups[i], FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+            rm.register{value: 1 ether}(backups[i], FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -1284,7 +1284,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
         period = bound(period, FREE_PERIOD, rm.MAX_INACTIVITY_PERIOD());
 
         vm.prank(alice);
-        rm.register{value: 1 ether}(aliceBackup, period, IRecoveryManager.SubscriptionTier.Free);
+        rm.register{value: 1 ether}(aliceBackup, period, IAeternumVault.SubscriptionTier.Free);
 
         assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, period);
     }

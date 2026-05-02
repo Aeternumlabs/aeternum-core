@@ -2,13 +2,14 @@
 pragma solidity ^0.8.24;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {IRecoveryManager} from "./interfaces/IRecoveryManager.sol";
+import {IAeternumVault} from "./interfaces/IAeternumVault.sol";
 import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleInterface.sol";
 
 /**
- * @title  RecoveryManager
+ * @title  AeternumVault
  * @author Ndubuisi Ugwuja
  * @notice Trustless, non-custodial smart wallet vault with built-in automated funds recovery.
+ *
  *
  * @dev    SYSTEM OVERVIEW
  *         ─────────────────────────────────────────────────────────────────────
@@ -49,7 +50,7 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *         • Direct ETH transfers: a `receive()` function explicitly reverts with a
  *           clear error, preventing accidental ETH loss.
  */
-contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompatibleInterface {
+contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleInterface {
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -118,14 +119,14 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     /// @dev Reverts if the caller does not have an active recovery config.
     modifier onlyRegistered() {
         if (!s_configs[msg.sender].isActive && !s_configs[msg.sender].isAbandoned) {
-            revert RecoveryManager__NotRegistered();
+            revert AeternumVault__NotRegistered();
         }
         _;
     }
 
     /// @dev Reverts if the caller is not the current treasury address.
     modifier onlyTreasury() {
-        if (msg.sender != s_treasury) revert RecoveryManager__NotAuthorized();
+        if (msg.sender != s_treasury) revert AeternumVault__NotAuthorized();
         _;
     }
 
@@ -139,7 +140,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *                  Recommended to be a multi-sig (e.g. Gnosis Safe) in production.
      */
     constructor(address treasury_) {
-        if (treasury_ == address(0)) revert RecoveryManager__ZeroAddress();
+        if (treasury_ == address(0)) revert AeternumVault__ZeroAddress();
         s_treasury = treasury_;
     }
 
@@ -170,29 +171,29 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         nonReentrant
     {
         // Checks
-        if (s_configs[msg.sender].isActive) revert RecoveryManager__AlreadyRegistered();
-        if (s_configs[msg.sender].isAbandoned) revert RecoveryManager__WalletAbandoned();
+        if (s_configs[msg.sender].isActive) revert AeternumVault__AlreadyRegistered();
+        if (s_configs[msg.sender].isAbandoned) revert AeternumVault__WalletAbandoned();
         if (backupAddress == address(0) || backupAddress == msg.sender) {
-            revert RecoveryManager__InvalidBackupAddress();
+            revert AeternumVault__InvalidBackupAddress();
         }
         if (inactivityPeriod > MAX_INACTIVITY_PERIOD) {
-            revert RecoveryManager__InvalidInactivityPeriod();
+            revert AeternumVault__InvalidInactivityPeriod();
         }
 
         uint256 subscriptionPayment = 0;
         uint256 subscriptionExpiry = 0;
 
         if (tier == SubscriptionTier.Premium) {
-            if (msg.value < PREMIUM_MONTHLY_FEE) revert RecoveryManager__InsufficientSubscriptionFee();
+            if (msg.value < PREMIUM_MONTHLY_FEE) revert AeternumVault__InsufficientSubscriptionFee();
             if (inactivityPeriod < MIN_INACTIVITY_PERIOD_PREMIUM) {
-                revert RecoveryManager__InvalidInactivityPeriod();
+                revert AeternumVault__InvalidInactivityPeriod();
             }
             subscriptionPayment = PREMIUM_MONTHLY_FEE;
             subscriptionExpiry = block.timestamp + SUBSCRIPTION_DURATION;
         } else {
             // Free tier
             if (inactivityPeriod < MIN_INACTIVITY_PERIOD_FREE) {
-                revert RecoveryManager__InvalidInactivityPeriod();
+                revert AeternumVault__InvalidInactivityPeriod();
             }
         }
 
@@ -232,7 +233,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *         Emits {Deposited} and {ActivityPinged}.
      */
     function deposit() external payable onlyRegistered nonReentrant {
-        if (msg.value == 0) revert RecoveryManager__InsufficientBalance();
+        if (msg.value == 0) revert AeternumVault__InsufficientBalance();
 
         // Effects
         s_configs[msg.sender].balance += msg.value;
@@ -251,7 +252,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     function withdrawAll() external onlyRegistered nonReentrant {
         RecoveryConfig storage config = s_configs[msg.sender];
         uint256 amount = config.balance;
-        if (amount == 0) revert RecoveryManager__NothingToWithdraw();
+        if (amount == 0) revert AeternumVault__NothingToWithdraw();
 
         // Effects
         config.balance = 0;
@@ -262,7 +263,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         // Interaction
         (bool success,) = msg.sender.call{value: amount}("");
-        if (!success) revert RecoveryManager__TransferFailed();
+        if (!success) revert AeternumVault__TransferFailed();
     }
 
     /**
@@ -277,11 +278,11 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      * @param amount Amount to send in wei. Must be ≤ caller's vault balance.
      */
     function send(address to, uint256 amount) external onlyRegistered nonReentrant {
-        if (to == address(0)) revert RecoveryManager__InvalidBackupAddress();
-        if (amount == 0) revert RecoveryManager__NothingToWithdraw();
+        if (to == address(0)) revert AeternumVault__InvalidBackupAddress();
+        if (amount == 0) revert AeternumVault__NothingToWithdraw();
 
         RecoveryConfig storage config = s_configs[msg.sender];
-        if (amount > config.balance) revert RecoveryManager__InsufficientBalance();
+        if (amount > config.balance) revert AeternumVault__InsufficientBalance();
 
         // Effects (before external call — CEI)
         config.balance -= amount;
@@ -292,7 +293,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         // Interaction
         (bool success,) = to.call{value: amount}("");
-        if (!success) revert RecoveryManager__TransferFailed();
+        if (!success) revert AeternumVault__TransferFailed();
     }
 
     /**
@@ -315,7 +316,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      */
     function updateBackupAddress(address newBackupAddress) external onlyRegistered {
         if (newBackupAddress == address(0) || newBackupAddress == msg.sender) {
-            revert RecoveryManager__InvalidBackupAddress();
+            revert AeternumVault__InvalidBackupAddress();
         }
 
         s_configs[msg.sender].backupAddress = newBackupAddress;
@@ -343,7 +344,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         uint256 minPeriod = premiumActive ? MIN_INACTIVITY_PERIOD_PREMIUM : MIN_INACTIVITY_PERIOD_FREE;
 
         if (newPeriod < minPeriod || newPeriod > MAX_INACTIVITY_PERIOD) {
-            revert RecoveryManager__InvalidInactivityPeriod();
+            revert AeternumVault__InvalidInactivityPeriod();
         }
 
         config.inactivityPeriod = newPeriod;
@@ -364,7 +365,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      *         Emits {SubscriptionRenewed} and {ActivityPinged}.
      */
     function renewSubscription() external payable onlyRegistered nonReentrant {
-        if (msg.value < PREMIUM_MONTHLY_FEE) revert RecoveryManager__InsufficientSubscriptionFee();
+        if (msg.value < PREMIUM_MONTHLY_FEE) revert AeternumVault__InsufficientSubscriptionFee();
 
         RecoveryConfig storage config = s_configs[msg.sender];
 
@@ -403,7 +404,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         // Interaction (after all state changes)
         if (refundAmount > 0) {
             (bool success,) = msg.sender.call{value: refundAmount}("");
-            if (!success) revert RecoveryManager__TransferFailed();
+            if (!success) revert AeternumVault__TransferFailed();
         }
     }
 
@@ -430,7 +431,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     function checkUpkeep(bytes calldata checkData)
         external
         view
-        override(IRecoveryManager, AutomationCompatibleInterface)
+        override(IAeternumVault, AutomationCompatibleInterface)
         returns (bool upkeepNeeded, bytes memory performData)
     {
         uint256 startIndex;
@@ -513,13 +514,13 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      */
     function performUpkeep(bytes calldata performData)
         external
-        override(IRecoveryManager, AutomationCompatibleInterface)
+        override(IAeternumVault, AutomationCompatibleInterface)
         nonReentrant
     {
         address[] memory walletsToRecover = abi.decode(performData, (address[]));
 
         uint256 length = walletsToRecover.length;
-        if (length > MAX_BATCH_SIZE) revert RecoveryManager__MaxBatchSizeExceeded();
+        if (length > MAX_BATCH_SIZE) revert AeternumVault__MaxBatchSizeExceeded();
 
         for (uint256 i = 0; i < length;) {
             _executeRecovery(walletsToRecover[i]);
@@ -542,7 +543,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      */
     function withdrawSubscriptionFees() external onlyTreasury nonReentrant {
         uint256 amount = s_accumulatedFees;
-        if (amount == 0) revert RecoveryManager__NothingToWithdraw();
+        if (amount == 0) revert AeternumVault__NothingToWithdraw();
 
         // Effects
         s_accumulatedFees = 0;
@@ -551,7 +552,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
         // Interaction
         (bool success,) = s_treasury.call{value: amount}("");
-        if (!success) revert RecoveryManager__TransferFailed();
+        if (!success) revert AeternumVault__TransferFailed();
     }
 
     /**
@@ -564,7 +565,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      * @param newTreasury New treasury address. Must not be the zero address.
      */
     function updateTreasury(address newTreasury) external onlyTreasury {
-        if (newTreasury == address(0)) revert RecoveryManager__ZeroAddress();
+        if (newTreasury == address(0)) revert AeternumVault__ZeroAddress();
 
         address oldTreasury = s_treasury;
         s_treasury = newTreasury;
@@ -764,6 +765,6 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
      * @dev Users must interact through `register()` or `deposit()`.
      */
     receive() external payable {
-        revert RecoveryManager__DirectTransferNotAllowed();
+        revert AeternumVault__DirectTransferNotAllowed();
     }
 }

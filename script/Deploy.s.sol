@@ -2,12 +2,12 @@
 pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {RecoveryManager} from "../src/RecoveryManager.sol";
+import {AeternumVault} from "../src/AeternumVault.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 
 /**
  * @title  Deploy
- * @notice Deploys RecoveryManager with the correct treasury for the target network.
+ * @notice Deploys AeternumVault with the correct treasury for the target network.
  *
  * Usage:
  *   # Local Anvil
@@ -32,7 +32,7 @@ contract Deploy is Script {
                           ENTRY POINT
     //////////////////////////////////////////////////////////////*/
 
-    function run() external returns (RecoveryManager recoveryManager, HelperConfig helperConfig) {
+    function run() external returns (AeternumVault aeternumVault, HelperConfig helperConfig) {
         helperConfig = new HelperConfig();
         address treasury = helperConfig.getTreasuryAddress();
 
@@ -40,7 +40,7 @@ contract Deploy is Script {
         require(treasury != address(0), "Deploy: treasury is zero address");
 
         // Log pre-deployment info
-        console2.log("\n=== RecoveryManager Deployment ===");
+        console2.log("\n=== AeternumVault Deployment ===");
         console2.log("Deployer:  ", msg.sender);
         console2.log("Treasury:  ", treasury);
         console2.log("Chain ID:  ", block.chainid);
@@ -49,18 +49,18 @@ contract Deploy is Script {
 
         // ── Deploy ──────────────────────────────────────────────────────────
         vm.startBroadcast();
-        recoveryManager = new RecoveryManager(treasury);
+        aeternumVault = new AeternumVault(treasury);
         vm.stopBroadcast();
 
         // ── Post-deploy verification ─────────────────────────────────────────
-        _verifyDeployment(recoveryManager, treasury);
+        _verifyDeployment(aeternumVault, treasury);
     }
 
     /*//////////////////////////////////////////////////////////////
                       POST-DEPLOY CHECKS
     //////////////////////////////////////////////////////////////*/
 
-    function _verifyDeployment(RecoveryManager rm, address expectedTreasury) internal view {
+    function _verifyDeployment(AeternumVault rm, address expectedTreasury) internal view {
         console2.log("\n=== Post-Deploy Verification ===");
         console2.log("Contract address:  ", address(rm));
         console2.log("Treasury:          ", rm.getTreasury());
@@ -76,6 +76,6 @@ contract Deploy is Script {
         require(rm.getTotalRegistered() == 0, "Deploy: unexpected registrations");
         require(rm.getAccumulatedFees() == 0, "Deploy: unexpected fees");
 
-        console2.log("\nAll assertions passed. RecoveryManager deployed successfully.");
+        console2.log("\nAll assertions passed. AeternumVault deployed successfully.");
     }
 }

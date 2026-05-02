@@ -37,14 +37,14 @@ Traditional wallets assume constant user availability. Aeternum Core ensures tha
 
 ```
 src/
-├── RecoveryManager.sol              ← Core contract
+├── AeternumVault.sol              ← Core contract
 └── interfaces/
-    ├── IRecoveryManager.sol         ← Full interface (events, errors, structs, functions)
+    ├── IAeternumVault.sol         ← Full interface (events, errors, structs, functions)
     └── AutomationCompatibleInterface.sol  ← Inlined Chainlink interface
 
 test/
 ├── unit/
-│   └── RecoveryManager.t.sol        ← Unit + fuzz + invariant tests
+│   └── AeternumVault.t.sol        ← Unit + fuzz + invariant tests
 └── mocks/
     └── ReentrantAttacker.sol        ← Security test helper
 
@@ -110,10 +110,10 @@ forge coverage --report lcov
 
 ```bash
 # Install slither: pip install slither-analyzer
-slither src/RecoveryManager.sol
+slither src/AeternumVault.sol
 
 # Install solhint: npm install -g solhint
-solhint src/RecoveryManager.sol
+solhint src/AeternumVault.sol
 ```
 
 ### 6. Deploy to Sepolia
@@ -139,7 +139,7 @@ After deployment:
 
 1. Go to [automation.chain.link](https://automation.chain.link)
 2. Register a new **Custom Logic** upkeep
-3. Set the target contract to your deployed `RecoveryManager` address
+3. Set the target contract to your deployed `AeternumVault` address
 4. For `checkData`, encode pagination: `abi.encode(uint256(0), uint256(10))`
 5. Fund the upkeep with LINK
 
@@ -170,7 +170,7 @@ For large user counts, register multiple upkeeps with different `checkData` wind
 - **Stale `performData`**: `_executeRecovery` re-validates all conditions; stale entries silently skip.
 - **Swap-and-pop safety**: `_removeFromRegistry` uses 1-indexed mappings to handle concurrent batch removals correctly.
 - **Integer overflow**: Solidity ^0.8 reverts on overflow natively.
-- **Direct ETH transfers**: `receive()` explicitly reverts with `RecoveryManager__DirectTransferNotAllowed`.
+- **Direct ETH transfers**: `receive()` explicitly reverts with `AeternumVault__DirectTransferNotAllowed`.
 
 ---
 
