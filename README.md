@@ -1,8 +1,8 @@
 # Aeternum Vault
 
 [![Lint](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/lint.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/lint.yml) 
-
 [![Tests](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
 A trustless, non-custodial smart wallet vault with built-in automated ETH recovery, powered by Chainlink Automation and built with Foundry.
 
@@ -306,6 +306,5 @@ The contract uses pagination — each upkeep monitors a specific window of regis
 > Details to be announced.
 
 ## License 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
 Aeternum Vault is licensed under the MIT License.
