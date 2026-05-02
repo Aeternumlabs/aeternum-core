@@ -109,6 +109,7 @@ interface IRecoveryManager {
     error RecoveryManager__NothingToWithdraw();
     error RecoveryManager__InsufficientBalance();
     error RecoveryManager__DirectTransferNotAllowed();
+    error RecoveryManager__WalletAbandoned();
 
     /*//////////////////////////////////////////////////////////////
                           FUNCTION SIGNATURES

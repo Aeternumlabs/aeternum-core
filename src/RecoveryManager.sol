@@ -117,9 +117,11 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
     /// @dev Reverts if the caller does not have an active recovery config.
     modifier onlyRegistered() {
-        if (!s_configs[msg.sender].isActive) revert RecoveryManager__NotRegistered();
-        _;
+    if (!s_configs[msg.sender].isActive && !s_configs[msg.sender].isAbandoned) {
+        revert RecoveryManager__NotRegistered();
     }
+    _;
+}
 
     /// @dev Reverts if the caller is not the current treasury address.
     modifier onlyTreasury() {
