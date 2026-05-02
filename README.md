@@ -1,12 +1,12 @@
-# Aeternum Vault
+# Aeternum Core
 
 [![Lint](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/lint.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/lint.yml) 
 [![Tests](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-A trustless, non-custodial smart wallet vault with built-in automated ETH recovery, powered by Chainlink Automation and built with Foundry.
+A trustless, non-custodial smart wallet vault with built-in automated ETH recovery.
 
-Aeternum Vault lets users store ETH in a self-sovereign vault, send and receive funds like a normal wallet, and configure a backup address with an inactivity timer. If the user goes silent beyond their chosen period — lost keys, death, incapacitation — Chainlink Automation transfers their ETH to the backup address automatically. No custodians. No admin backdoors. Just code.
+Aeternum Core lets users store ETH in a self-sovereign vault, send and receive funds like a normal wallet, and configure a backup address with an inactivity timer. If the user goes silent beyond their chosen period — lost keys, death, incapacitation — Chainlink Automation transfers their ETH to the backup address automatically. No custodians. No admin backdoors. Just code.
 
 ## Table of Contents
 
@@ -25,13 +25,13 @@ Aeternum Vault lets users store ETH in a self-sovereign vault, send and receive 
 
 ## Documentation
 
-- [Aeternum Vault Overview](#how-it-works)
+- [Aeternum Core Overview](#how-it-works)
 - [Chainlink Automation Docs](https://docs.chain.link/chainlink-automation)
 - [Foundry Book](https://book.getfoundry.sh)
 
 ## Architecture
 
-Aeternum Vault is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Chainlink Automation nodes monitor all registered vaults off-chain and execute recovery on-chain only when inactivity conditions are met.
+Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Chainlink Automation nodes monitor all registered vaults off-chain and execute recovery on-chain only when inactivity conditions are met.
 
 ```
 AeternumVault
@@ -53,7 +53,7 @@ AeternumVault
 ## Repository Structure
 
 ```
-smart-wallet-vault/
+aeternum-core/
 ├── src/
 │   ├── AeternumVault.sol                    ← Core contract
 │   └── interfaces/
@@ -171,8 +171,8 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/ndubuisi-ugwuja/smart-wallet-vault.git
-cd smart-wallet-vault
+git clone https://github.com/Aeternumlabs/aeternum-core.git
+cd aeternum-core
 ```
 
 ### 2. Install dependencies
@@ -185,7 +185,15 @@ forge install
 
 ```bash
 cp .env.example .env
-# Fill in SEPOLIA_RPC_URL, MAINNET_RPC_URL, ETHERSCAN_API_KEY, PRIVATE_KEY
+# Copy this file to .env and fill in values
+# NEVER commit .env to version control
+
+# RPC endpoints
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+BASE_MAINNET_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
+
+# Etherscan verification
+ETHERSCAN_API_KEY=YOUR_ETHERSCAN_KEY
 ```
 
 ### 4. Build contracts
@@ -218,9 +226,8 @@ forge test --match-test invariant -vv
 ### Coverage
 
 ```bash
-forge coverage --report lcov
-genhtml lcov.info --output-directory coverage-report
-# Open coverage-report/index.html in browser
+# Generate a table showing test coverage percentages
+forge coverage 
 ```
 
 ### Static Analysis
@@ -307,4 +314,4 @@ The contract uses pagination — each upkeep monitors a specific window of regis
 
 ## License 
 
-Aeternum Vault is licensed under the MIT License.
+Aeternum Core is licensed under the MIT License.
