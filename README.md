@@ -1,87 +1,201 @@
-# Aeternum Core
+# Aeternum Vault
 
-**Aeternum Core** is the protocol layer powering autonomous, non-custodial smart wallet vaults with automated recovery.
+[![CI](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-It enables users to define inactivity conditions and a recovery address. If inactivity persists beyond a chosen threshold, assets are automatically transferred—without custodians, intermediaries, or manual intervention.
+A trustless, non-custodial smart wallet vault with built-in automated ETH recovery, powered by Chainlink Automation and built with Foundry.
 
----
+Aeternum Vault lets users store ETH in a self-sovereign vault, send and receive funds like a normal wallet, and configure a backup address with an inactivity timer. If the user goes silent beyond their chosen period — lost keys, death, incapacitation — Chainlink Automation transfers their ETH to the backup address automatically. No custodians. No admin backdoors. Just code.
 
-## Overview
+## Table of Contents
 
-Aeternum introduces a new primitive for crypto ownership: **continuity**.
+- [Documentation](#documentation)
+- [Architecture](#architecture)
+- [Repository Structure](#repository-structure)
+- [Trust Model](#trust-model)
+- [How It Works](#how-it-works)
+- [Constants](#constants)
+- [Dependencies](#dependencies)
+- [Quickstart](#quickstart)
+- [Development](#development)
+- [Chainlink Automation Setup](#chainlink-automation-setup)
+- [Security](#security)
+- [License](#license)
 
-Traditional wallets assume constant user availability. Aeternum Core ensures that ownership persists even when the user becomes inactive.
+## Documentation
 
----
-
-## Core Features
-
-- **Non-Custodial Vaults**  
-  Users retain full control of their assets at all times.
-
-- **Inactivity-Based Triggers**  
-  Configurable inactivity periods initiate automated recovery.
-
-- **Automated Execution**  
-  Smart contracts integrate with decentralized automation (e.g. Chainlink) to trigger actions trustlessly.
-
-- **Recovery Mechanism**  
-  Funds are transferred to a predefined backup address after inactivity conditions are met.
-
-- **No Backdoors**  
-  Immutable logic. No admin overrides.
-
----
+- [Aeternum Vault Overview](#how-it-works)
+- [Chainlink Automation Docs](https://docs.chain.link/chainlink-automation)
+- [Foundry Book](https://book.getfoundry.sh)
 
 ## Architecture
 
+Aeternum Vault is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Chainlink Automation nodes monitor all registered vaults off-chain and execute recovery on-chain only when inactivity conditions are met.
+
 ```
-src/
-├── AeternumVault.sol              ← Core contract
-└── interfaces/
-    ├── IAeternumVault.sol         ← Full interface (events, errors, structs, functions)
-    └── AutomationCompatibleInterface.sol  ← Inlined Chainlink interface
-
-test/
-├── unit/
-│   └── AeternumVault.t.sol        ← Unit + fuzz + invariant tests
-└── mocks/
-    └── ReentrantAttacker.sol        ← Security test helper
-
-script/
-├── Deploy.s.sol                     ← Deployment + post-deploy checks
-└── HelperConfig.s.sol               ← Network-aware config resolver
+AeternumVault
+├── User Vault (per address)
+│   ├── balance          — ETH held in escrow
+│   ├── backupAddress    — recovery destination
+│   ├── inactivityPeriod — seconds before recovery triggers
+│   ├── lastActivity     — timestamp of last on-chain interaction
+│   └── subscriptionTier — Free or Premium
+│
+├── Chainlink Automation
+│   ├── checkUpkeep()    — off-chain simulation, finds due wallets
+│   └── performUpkeep()  — on-chain execution, transfers ETH to backup
+│
+└── Treasury
+    └── withdrawSubscriptionFees() — subscription revenue only
 ```
 
----
+## Repository Structure
+
+```
+smart-wallet-vault/
+├── src/
+│   ├── AeternumVault.sol                    ← Core contract
+│   └── interfaces/
+│       ├── IAeternumVault.sol               ← Full interface (events, errors, structs, functions)
+│       └── AutomationCompatibleInterface.sol ← Inlined Chainlink interface
+│
+├── test/
+│   ├── unit/
+│   │   └── AeternumVault.t.sol              ← Unit, fuzz, and invariant tests
+│   └── mocks/
+│       ├── ReentrantAttacker.sol            ← Reentrancy security test helper
+│       └── RejectingReceiver.sol            ← Failed recovery simulation helper
+│
+├── script/
+│   ├── Deploy.s.sol                         ← Deployment script with post-deploy checks
+│   └── HelperConfig.s.sol                   ← Network-aware configuration resolver
+│
+├── lib/                                     ← Foundry dependencies
+├── foundry.toml                             ← Foundry configuration
+├── .solhint.json                            ← Solhint linting rules
+└── .env.example                             ← Environment variable template
+```
 
 ## Trust Model
 
-| Who          | Can do                                              | Cannot do                              |
-|--------------|-----------------------------------------------------|----------------------------------------|
-| User         | register, deposit, withdraw, ping, cancel, config   | Access other users' funds              |
-| Treasury     | Withdraw accumulated subscription fees              | Touch user recovery balances           |
-| Chainlink    | Call `performUpkeep` when conditions are met        | Alter any config or redirect funds     |
-| Anyone       | Call `checkUpkeep` (read-only)                      | Trigger recovery before period elapses |
+| Actor | Can Do | Cannot Do |
+|---|---|---|
+| **User** | Register, deposit, send, withdrawAll, ping, update config, cancel | Access other users' funds |
+| **Treasury** | Withdraw accumulated subscription fees | Touch user vault balances |
+| **Chainlink Automation** | Call `performUpkeep` when inactivity conditions are met | Alter configs or redirect funds |
+| **Anyone** | Call `checkUpkeep` (read-only, off-chain simulation) | Trigger recovery before period elapses |
+| **No one** | Pause recovery, upgrade the contract, or access user funds | — |
 
----
+## How It Works
 
-## Quick Start
+**1. Register**
 
-### 1. Install dependencies
+The user calls `register()` with a backup address, inactivity period, and subscription tier. ETH deposited at registration goes directly into their vault.
+
+**2. Use the vault**
+
+The vault behaves like a normal wallet. Users can `deposit()` ETH, `send()` ETH to any address, `withdrawAll()` back to themselves, and update their recovery configuration at any time. Every interaction resets the inactivity timer — proving liveness to the contract.
+
+**3. Stay alive**
+
+If a user wants to prove liveness without moving funds, they call `ping()` — a single cheap storage write that resets the timer.
+
+**4. Recovery triggers**
+
+Chainlink Automation polls `checkUpkeep()` off-chain every ~12 seconds. When a vault's inactivity period has elapsed and its balance is non-zero, the Automation node submits `performUpkeep()` on-chain, transferring the ETH to the backup address.
+
+**5. Failed recovery**
+
+If a backup address cannot receive ETH (e.g. a contract that rejects transfers), the failure is counted. After `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is permanently deregistered but the balance remains fully accessible — the user can still `send()` or `withdrawAll()` at any time. Re-registration is blocked until the user resolves the backup address issue.
+
+**6. Cancel anytime**
+
+Users can call `cancelRecovery()` at any time to withdraw their full balance and deregister from monitoring in a single transaction.
+
+## Constants
+
+| Constant | Value | Description |
+|---|---|---|
+| `MIN_INACTIVITY_PERIOD_FREE` | 365 days | Minimum inactivity period for Free tier |
+| `MIN_INACTIVITY_PERIOD_PREMIUM` | 180 days | Minimum inactivity period for Premium tier |
+| `MAX_INACTIVITY_PERIOD` | 3650 days | Hard ceiling — 10 years |
+| `SUBSCRIPTION_DURATION` | 30 days | Premium subscription window |
+| `PREMIUM_MONTHLY_FEE` | 0.002 ETH | Fee required for Premium registration or renewal |
+| `MAX_BATCH_SIZE` | 50 | Maximum wallets processed per `performUpkeep` call |
+| `MAX_RECOVERY_ATTEMPTS` | 3 | Consecutive failures before vault is abandoned |
+
+## Dependencies
+
+### Required
+
+- **[Foundry](https://book.getfoundry.sh/getting-started/installation)** — Development framework
+
+  ```bash
+  curl -L https://foundry.paradigm.xyz | bash
+  foundryup
+  ```
+
+- **[OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts)** — ReentrancyGuard
+
+  ```bash
+  forge install OpenZeppelin/openzeppelin-contracts --no-commit
+  ```
+
+### Optional
+
+- **[Slither](https://github.com/crytic/slither)** — Static analysis
+
+  ```bash
+  pip install slither-analyzer --break-system-packages
+  ```
+
+- **[Solhint](https://github.com/protofire/solhint)** — Linting
+
+  ```bash
+  npm install -g solhint
+  ```
+
+- **[lcov](https://github.com/linux-test-project/lcov)** — Coverage reports
+
+  ```bash
+  # Ubuntu
+  sudo apt install lcov
+
+  # macOS
+  brew install lcov
+  ```
+
+## Quickstart
+
+### 1. Clone the repository
 
 ```bash
-forge install OpenZeppelin/openzeppelin-contracts
+git clone https://github.com/ndubuisi-ugwuja/smart-wallet-vault.git
+cd smart-wallet-vault
 ```
 
-### 2. Set environment variables
+### 2. Install dependencies
+
+```bash
+forge install
+```
+
+### 3. Set environment variables
 
 ```bash
 cp .env.example .env
-# Fill in SEPOLIA_RPC_URL, MAINNET_RPC_URL, ETHERSCAN_API_KEY
+# Fill in SEPOLIA_RPC_URL, MAINNET_RPC_URL, ETHERSCAN_API_KEY, PRIVATE_KEY
 ```
 
-### 3. Run tests
+### 4. Build contracts
+
+```bash
+forge build
+```
+
+## Development
+
+### Testing
 
 ```bash
 # Full test suite
@@ -90,103 +204,106 @@ forge test -vv
 # With gas report
 forge test --gas-report
 
+# Specific test
+forge test --match-test test_performUpkeep_executesRecovery -vvvv
+
 # Fuzz tests only
 forge test --match-test testFuzz -vv
 
 # Invariant tests only
 forge test --match-test invariant -vv
-
-# Single test
-forge test --match-test test_performUpkeep_executesRecovery -vvvv
 ```
 
-### 4. Check coverage
+### Coverage
 
 ```bash
 forge coverage --report lcov
+genhtml lcov.info --output-directory coverage-report
+# Open coverage-report/index.html in browser
 ```
 
-### 5. Static analysis
+### Static Analysis
 
 ```bash
-# Install slither: pip install slither-analyzer
-slither src/AeternumVault.sol
+# Slither
+slither src/AeternumVault.sol \
+  --solc-remaps "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
 
-# Install solhint: npm install -g solhint
+# Solhint
 solhint src/AeternumVault.sol
 ```
 
-### 6. Deploy to Sepolia
+### Deployment
 
 ```bash
-# Dry run first (no --broadcast)
-forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL -vvvv
+# Dry run — Sepolia
+forge script script/Deploy.s.sol \
+  --rpc-url $SEPOLIA_RPC_URL \
+  -vvvv
 
-# Live deploy + Etherscan verification
+# Live deploy + Etherscan verification — Sepolia
 forge script script/Deploy.s.sol \
   --rpc-url $SEPOLIA_RPC_URL \
   --broadcast \
   --verify \
   --etherscan-api-key $ETHERSCAN_API_KEY \
   -vvvv
-```
 
----
+# Mainnet — ALWAYS dry run first
+forge script script/Deploy.s.sol \
+  --rpc-url $MAINNET_RPC_URL \
+  -vvvv
+```
 
 ## Chainlink Automation Setup
 
 After deployment:
 
-1. Go to [automation.chain.link](https://automation.chain.link)
-2. Register a new **Custom Logic** upkeep
+1. Go to [automation.chain.link](https://automation.chain.link) and connect your wallet
+2. Click **Register new upkeep** → select **Custom Logic**
 3. Set the target contract to your deployed `AeternumVault` address
-4. For `checkData`, encode pagination: `abi.encode(uint256(0), uint256(10))`
-5. Fund the upkeep with LINK
+4. Set `checkData` to `abi.encode(uint256(0), uint256(50))` for the first upkeep
+5. Set gas limit to `5000000`
+6. Fund the upkeep with LINK tokens from [faucets.chain.link](https://faucets.chain.link) (Sepolia)
 
-For large user counts, register multiple upkeeps with different `checkData` windows:
-- Upkeep 1: `abi.encode(0, 10)` — indices 0–9
-- Upkeep 2: `abi.encode(10, 10)` — indices 10–19
-- etc.
+**Scaling to large user counts:**
 
----
+The contract uses pagination — each upkeep monitors a specific window of registered wallets. For 500,000 wallets, register multiple upkeeps with different `checkData` windows running in parallel:
 
-## Constants
+| Upkeep | checkData | Watches |
+|---|---|---|
+| Upkeep 1 | `abi.encode(0, 50)` | Wallets 0–49 |
+| Upkeep 2 | `abi.encode(50, 50)` | Wallets 50–99 |
+| Upkeep 3 | `abi.encode(100, 50)` | Wallets 100–149 |
+| ... | ... | ... |
 
-| Constant                    | Value    | Description                              |
-|-----------------------------|----------|------------------------------------------|
-| `MIN_INACTIVITY_PERIOD_FREE`  | 180 days | Free tier minimum                        |
-| `MIN_INACTIVITY_PERIOD_PREMIUM` | 30 days | Premium tier minimum                   |
-| `MAX_INACTIVITY_PERIOD`       | 3650 days | Hard ceiling (10 years)                |
-| `SUBSCRIPTION_DURATION`       | 30 days  | Premium subscription window              |
-| `PREMIUM_MONTHLY_FEE`         | 0.005 ETH | Required for Premium registration/renewal |
-| `MAX_BATCH_SIZE`              | 10       | Max wallets per `performUpkeep` call     |
+`checkUpkeep` runs off-chain and costs nothing. `performUpkeep` fires on-chain only when a wallet is actually due, deducting LINK from the upkeep balance.
 
----
+## Security
 
-## Security Considerations
+### Design Principles
 
-- **Reentrancy**: All ETH-transferring functions are guarded by `ReentrancyGuard` + CEI pattern.
-- **No admin backdoors**: Treasury can only withdraw subscription fees, not user balances.
-- **Stale `performData`**: `_executeRecovery` re-validates all conditions; stale entries silently skip.
-- **Swap-and-pop safety**: `_removeFromRegistry` uses 1-indexed mappings to handle concurrent batch removals correctly.
-- **Integer overflow**: Solidity ^0.8 reverts on overflow natively.
-- **Direct ETH transfers**: `receive()` explicitly reverts with `AeternumVault__DirectTransferNotAllowed`.
+- **Checks-Effects-Interactions (CEI)** enforced on all ETH-transferring paths
+- **ReentrancyGuard** applied as a secondary defence layer on all state-changing functions
+- **No admin backdoors** — the treasury address can only withdraw subscription fees, never user balances
+- **Stale `performData` safety** — `_executeRecovery` re-validates every wallet before acting; stale or already-recovered entries are silently skipped
+- **O(1) registry removal** — swap-and-pop with 1-indexed mappings prevents array corruption during batch removals
+- **Failed recovery handling** — after `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is abandoned and balance remains self-claimable; the infinite retry loop is broken
+- **Direct ETH transfer rejection** — `receive()` explicitly reverts, preventing accidental ETH loss
 
----
+### Known Considerations
 
-## Audit Checklist
+- `block.timestamp` is used for inactivity comparisons. Validator manipulation is bounded to ~12 seconds — negligible for inactivity periods measured in days and months.
+- External ETH transfers inside a loop in `performUpkeep` are acknowledged (Slither: calls-loop). Mitigated by `nonReentrant`, CEI pattern, re-validation per iteration, and `MAX_BATCH_SIZE` cap.
 
-- [ ] Reentrancy on all external ETH transfer paths
-- [ ] Access control: `onlyRegistered`, `onlyTreasury`
-- [ ] CEI pattern enforced in `_executeRecovery`, `withdraw`, `withdrawAll`, `cancelRecovery`, `withdrawSubscriptionFees`
-- [ ] Integer arithmetic (Solidity ^0.8 safe)
-- [ ] `_removeFromRegistry` swap-and-pop correctness under batch removal
-- [ ] `checkUpkeep` pagination boundary conditions
-- [ ] Subscription fee accounting (separate from user balances)
-- [ ] `receive()` prevents accidental ETH lock
+### Audit Status
 
----
+> Pending — targeting audit engagement prior to mainnet deployment.
+
+### Bug Bounty
+
+> Details to be announced.
 
 ## License
 
-MIT
+Aeternum Vault is licensed under the MIT License — see [LICENSE](./LICENSE).
