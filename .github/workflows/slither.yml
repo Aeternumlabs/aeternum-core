@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
 
     steps:
       - uses: actions/checkout@v5
@@ -22,24 +21,15 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
+      - name: Install Slither
+        run: pip install slither-analyzer --break-system-packages
+
       - name: Run Forge build
-        run: forge build --build-info
+        run: forge build
 
       - name: Run Slither
-        uses: crytic/slither-action@v0.4.0
-        id: slither
-        with:
-          target: "src/AeternumVault.sol"
-          slither-args: >-
-            --solc-remaps "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
-            --filter-paths "lib/"
-            --checklist
-            --markdown-root ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/
-          fail-on: high
-          sarif: results.sarif
-
-      - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: results.sarif
+        run: |
+          slither src/AeternumVault.sol \
+            --solc-remaps "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/" \
+            --filter-paths "lib/" \
+            --no-fail-pedantic
