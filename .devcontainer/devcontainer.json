@@ -1,0 +1,19 @@
+{
+  "name": "Aeternum Labs",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "postCreateCommand": "curl -L https://foundry.paradigm.xyz | bash && source ~/.bashrc && foundryup",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "nomicfoundation.hardhat-solidity",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
