@@ -697,6 +697,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
             if (config.failedRecoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
                 // Permanently deregister — balance stays accessible
                 // via withdrawAll() or send(). Re-registration blocked.
+                config.balance = amount;
                 config.isActive = false;
                 config.isAbandoned = true;
                 _removeFromRegistry(wallet);
