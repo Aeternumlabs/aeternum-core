@@ -677,6 +677,16 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *        * A single faulty backup address cannot block batch execution.
      *        * Recovery attempts are bounded, preventing infinite retry loops.
      *
+     *      Slither reentrancy-eth: acknowledged.
+     *        * On a failed transfer, config.balance, config.isActive, config.isAbandoned,
+     *          and s_registeredWallets are written after the external call — unavoidable
+     *          in the failure-restore pattern.
+     *        * Safety is guaranteed by three independent layers:
+     *            1. `nonReentrant` on `performUpkeep` blocks all reentrant calls.
+     *            2. `config.balance` is zeroed before the call — no double-spend possible.
+     *            3. After MAX_RECOVERY_ATTEMPTS (3) consecutive failures the vault is
+     *               permanently abandoned, eliminating the retry loop entirely.
+     *
      * @param wallet The wallet address to attempt recovery on.
      */
     function _executeRecovery(address wallet) internal {
@@ -703,6 +713,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         _removeFromRegistry(wallet);
 
         // Interaction
+        // slither-disable-next-line reentrancy-eth
         (bool success,) = backupAddress.call{value: amount}("");
 
         if (!success) {
