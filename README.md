@@ -303,6 +303,9 @@ The contract uses pagination — each upkeep monitors a specific window of regis
 
 - `block.timestamp` is used for inactivity comparisons. Validator manipulation is bounded to ~12 seconds — negligible for inactivity periods measured in days and months.
 - External ETH transfers inside a loop in `performUpkeep` are acknowledged (Slither: calls-loop). Mitigated by `nonReentrant`, CEI pattern, re-validation per iteration, and `MAX_BATCH_SIZE` cap.
+- `_executeRecovery` restores state after a failed ETH transfer (Slither: reentrancy-eth). 
+  Silenced and acknowledged — exploitation is prevented by `nonReentrant` on `performUpkeep`, 
+  balance zeroing before the call, and permanent abandonment after 3 consecutive failures.
 
 ### Audit Status
 
