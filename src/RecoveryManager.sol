@@ -199,6 +199,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         uint256 depositAmount = msg.value - subscriptionPayment;
 
         // Effects
+
         s_configs[msg.sender] = RecoveryConfig({
             backupAddress: backupAddress,
             inactivityPeriod: inactivityPeriod,
@@ -206,7 +207,9 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
             balance: depositAmount,
             tier: tier,
             subscriptionExpiry: subscriptionExpiry,
-            isActive: true
+            isActive: true,
+            failedRecoveryAttempts: 0,
+            isAbandoned: false
         });
 
         s_registeredWallets.push(msg.sender);
