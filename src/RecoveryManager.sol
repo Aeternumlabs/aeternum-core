@@ -117,11 +117,11 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
 
     /// @dev Reverts if the caller does not have an active recovery config.
     modifier onlyRegistered() {
-    if (!s_configs[msg.sender].isActive && !s_configs[msg.sender].isAbandoned) {
-        revert RecoveryManager__NotRegistered();
+        if (!s_configs[msg.sender].isActive && !s_configs[msg.sender].isAbandoned) {
+            revert RecoveryManager__NotRegistered();
+        }
+        _;
     }
-    _;
-}
 
     /// @dev Reverts if the caller is not the current treasury address.
     modifier onlyTreasury() {
@@ -171,6 +171,7 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     {
         // Checks
         if (s_configs[msg.sender].isActive) revert RecoveryManager__AlreadyRegistered();
+        if (s_configs[msg.sender].isAbandoned) revert RecoveryManager__WalletAbandoned();
         if (backupAddress == address(0) || backupAddress == msg.sender) {
             revert RecoveryManager__InvalidBackupAddress();
         }
@@ -686,7 +687,22 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
         (bool success,) = backupAddress.call{value: amount}("");
 
         if (!success) {
-            // Restore state so wallet can be retried in a future upkeep cycle
+            unchecked {
+                config.failedRecoveryAttempts += 1;
+            }
+
+            if (config.failedRecoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
+                // Permanently deregister — balance stays accessible
+                // via withdrawAll() or send(). Re-registration blocked.
+                config.isActive = false;
+                config.isAbandoned = true;
+                _removeFromRegistry(wallet);
+
+                emit RecoveryAbandoned(wallet, backupAddress, amount);
+                return;
+            }
+
+            // Not yet at max — restore and retry next cycle
             config.balance = amount;
             config.isActive = true;
             s_registeredWallets.push(wallet);
@@ -695,6 +711,8 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
             emit RecoveryFailed(wallet, backupAddress, amount);
             return;
         }
+
+        emit RecoveryExecuted(wallet, backupAddress, amount);
 
         emit RecoveryExecuted(wallet, backupAddress, amount);
     }
