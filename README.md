@@ -305,6 +305,7 @@ The contract uses pagination — each upkeep monitors a specific window of regis
 
 > Details to be announced.
 
-## License
+## License 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-Aeternum Vault is licensed under the MIT License — see [LICENSE](./LICENSE).
+Aeternum Vault is licensed under the MIT License.
