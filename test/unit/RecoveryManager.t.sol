@@ -56,6 +56,7 @@ contract RecoveryManagerTest is StdInvariant, Test {
     event ActivityPinged(address indexed wallet, uint256 timestamp);
     event RecoveryExecuted(address indexed wallet, address indexed backupAddress, uint256 amount);
     event RecoveryFailed(address indexed wallet, address indexed backupAddress, uint256 amount);
+    event RecoveryAbandoned(address indexed wallet, address indexed backupAddress, uint256 balance);
     event RecoveryCancelled(address indexed wallet, uint256 refundAmount);
     event Deposited(address indexed wallet, uint256 amount);
     event Sent(address indexed wallet, address indexed to, uint256 amount);
@@ -945,6 +946,150 @@ contract RecoveryManagerTest is StdInvariant, Test {
             assertFalse(rm.getRecoveryConfig(users[i]).isActive);
             assertEq(backups[i].balance, DEPOSIT_1_ETH);
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                  11b. RECOVERY FAILURE & ABANDONMENT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_executeRecovery_incrementsFailedAttempts() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+        _warpPastInactivity(alice);
+
+        (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+        rm.performUpkeep(performData);
+
+        assertEq(rm.getRecoveryConfig(alice).failedRecoveryAttempts, 1);
+    }
+
+    function test_executeRecovery_emitsRecoveryAbandoned() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS() - 1; i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory loopPerformData) = rm.checkUpkeep(bytes("")); // renamed
+            rm.performUpkeep(loopPerformData);
+        }
+
+        _warpPastInactivity(alice);
+        (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+
+        vm.expectEmit(true, true, false, true);
+        emit RecoveryAbandoned(alice, address(badBackup), DEPOSIT_1_ETH);
+
+        rm.performUpkeep(performData);
+    }
+
+    function test_executeRecovery_abandonedAfterMaxAttempts() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(performData);
+        }
+
+        // Deregistered from monitoring
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+        assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
+        assertEq(rm.getTotalRegistered(), 0);
+
+        // Balance still intact and accessible
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
+    }
+
+    function test_abandonedWallet_canWithdrawAll() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(performData);
+        }
+
+        uint256 balanceBefore = alice.balance;
+        vm.prank(alice);
+        rm.withdrawAll();
+
+        assertEq(alice.balance, balanceBefore + DEPOSIT_1_ETH);
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+    }
+
+    function test_abandonedWallet_canSend() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(performData);
+        }
+
+        address recipient = makeAddr("recipient");
+        vm.prank(alice);
+        rm.send(recipient, DEPOSIT_1_ETH);
+
+        assertEq(recipient.balance, DEPOSIT_1_ETH);
+    }
+
+    function test_abandonedWallet_canUpdateBackupAddress() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(performData);
+        }
+
+        address newBackup = makeAddr("newBackup");
+        vm.prank(alice);
+        rm.updateBackupAddress(newBackup);
+
+        assertEq(rm.getRecoveryConfig(alice).backupAddress, newBackup);
+    }
+
+    function test_abandonedWallet_cannotReRegister() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(performData);
+        }
+
+        vm.expectRevert(IRecoveryManager.RecoveryManager__WalletAbandoned.selector);
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+    }
+
+    function test_abandonedWallet_checkUpkeepSkipsIt() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IRecoveryManager.SubscriptionTier.Free);
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory performData) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(performData);
+        }
+
+        // After abandonment checkUpkeep should return false — no longer monitored
+        _warpPastInactivity(alice);
+        (bool needed,) = rm.checkUpkeep(bytes(""));
+        assertFalse(needed);
     }
 
     /*//////////////////////////////////////////////////////////////
