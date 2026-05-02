@@ -66,6 +66,11 @@ interface IRecoveryManager {
     /// @notice Emitted when a recovery transfer fails — wallet state is restored for retry.
     event RecoveryFailed(address indexed wallet, address indexed backupAddress, uint256 amount);
 
+    /// @notice Emitted when a wallet is permanently deregistered after exceeding
+    ///         max failed recovery attempts. Balance remains accessible via
+    ///         withdrawAll() or send(). Re-registration is permanently blocked.
+    event RecoveryAbandoned(address indexed wallet, address indexed backupAddress, uint256 balance);
+
     /// @notice Emitted when a user voluntarily cancels their recovery and withdraws funds.
     event RecoveryCancelled(address indexed wallet, uint256 refundAmount);
 
