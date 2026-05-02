@@ -663,10 +663,19 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *        2. Effects — zero the balance, mark inactive, remove from registry.
      *        3. Interact — transfer ETH to backupAddress.
      *
-     *      * If the ETH transfer to `backupAddress` fails (e.g. the backup address is a
-     *      * contract that reverts), state is restored and a {RecoveryFailed} event is
-     *      * emitted. The wallet re-enters the monitoring queue for the next upkeep cycle.
-     *      * This prevents one bad backup address from blocking the rest of the batch.
+     *      Failure handling & retry logic:
+     *        * If the ETH transfer to `backupAddress` fails (e.g. reverting contract),
+     *          state is safely restored and a {RecoveryFailed} event is emitted.
+     *        * The wallet is re-added to the monitoring queue for retry in the next upkeep cycle.
+     *        * Recovery is retried up to `MAX_RECOVERY_ATTEMPTS` (currently 3).
+     *        * Once the max attempts threshold is reached, the wallet is marked as abandoned,
+     *          permanently removed from the monitoring queue, and {RecoveryAbandoned} is emitted.
+     *        * Wallet balance remains accessible via withdrawAll() or send(),
+     *          but re-registration with same backupAddress is permanently blocked.
+     *
+     *      This design ensures that:
+     *        * A single faulty backup address cannot block batch execution.
+     *        * Recovery attempts are bounded, preventing infinite retry loops.
      *
      * @param wallet The wallet address to attempt recovery on.
      */
@@ -674,7 +683,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         RecoveryConfig storage config = s_configs[wallet];
 
         // Re-validate (Checks)
-        // Any of these conditions can become stale between checkUpkeep and performUpkeep.
         if (!config.isActive) return;
         if (config.balance == 0) return;
         if (block.timestamp < config.lastActivity + config.inactivityPeriod) return;
@@ -682,42 +690,39 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         address backupAddress = config.backupAddress;
         uint256 amount = config.balance;
 
-        // Effects (before any external call)
+        // Pre-calculate new attempt count before external call (CEI)
+        uint8 newAttempts;
+        unchecked {
+            newAttempts = config.failedRecoveryAttempts + 1;
+        }
+
+        // Effects — ALL moved before external call
         config.balance = 0;
         config.isActive = false;
+        config.failedRecoveryAttempts = newAttempts;
         _removeFromRegistry(wallet);
 
         // Interaction
         (bool success,) = backupAddress.call{value: amount}("");
 
         if (!success) {
-            unchecked {
-                config.failedRecoveryAttempts += 1;
-            }
+            // Restore balance — safe: nonReentrant on performUpkeep prevents exploitation.
+            // config.balance was zeroed before the call so no double-spend is possible.
+            config.balance = amount;
 
-            if (config.failedRecoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
-                // Permanently deregister — balance stays accessible
-                // via withdrawAll() or send(). Re-registration blocked.
-                config.balance = amount;
-                config.isActive = false;
+            if (newAttempts >= MAX_RECOVERY_ATTEMPTS) {
                 config.isAbandoned = true;
-                _removeFromRegistry(wallet);
-
                 emit RecoveryAbandoned(wallet, backupAddress, amount);
                 return;
             }
 
-            // Not yet at max — restore and retry next cycle
-            config.balance = amount;
+            // Restore monitoring state for retry next cycle
             config.isActive = true;
             s_registeredWallets.push(wallet);
             s_walletIndexPlusOne[wallet] = s_registeredWallets.length;
-
             emit RecoveryFailed(wallet, backupAddress, amount);
             return;
         }
-
-        emit RecoveryExecuted(wallet, backupAddress, amount);
 
         emit RecoveryExecuted(wallet, backupAddress, amount);
     }
