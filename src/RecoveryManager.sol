@@ -77,6 +77,10 @@ contract RecoveryManager is IRecoveryManager, ReentrancyGuard, AutomationCompati
     /// @dev    Keeps on-chain gas consumption predictable and within Chainlink limits.
     uint256 public constant MAX_BATCH_SIZE = 50;
 
+    /// @notice Maximum consecutive failed recovery attempts before a wallet is
+    ///         permanently deregistered and its balance becomes self-claimable.
+    uint8 public constant MAX_RECOVERY_ATTEMPTS = 3;
+
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/

@@ -44,6 +44,8 @@ interface IRecoveryManager {
         SubscriptionTier tier;
         uint256 subscriptionExpiry;
         bool isActive;
+        uint8 failedRecoveryAttempts;
+        bool isAbandoned;
     }
 
     /*//////////////////////////////////////////////////////////////
