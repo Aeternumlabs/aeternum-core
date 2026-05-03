@@ -151,6 +151,16 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
   pip install slither-analyzer --break-system-packages
   ```
 
+- **[Echidna](https://github.com/crytic/echidna)** — Property-based fuzz test
+
+  ```bash
+  # install from docker
+  docker pull ghcr.io/crytic/echidna/echidna
+
+  # Create config file 
+  touch echidna.config.yml
+  ```
+
 - **[Solhint](https://github.com/protofire/solhint)** — Linting
 
   ```bash
@@ -240,6 +250,17 @@ slither src/AeternumVault.sol \
 
 # Solhint
 solhint src/AeternumVault.sol
+```
+
+### Property-Based Fuzz Test
+
+```bash
+# create Echidna alias
+alias echidna='docker run --rm -v $(pwd):/src -w /src ghcr.io/crytic/echidna/echidna echidna'
+source ~/.bashrc
+
+# Fuzz
+echidna test/echidna/AeternumVaultEchidna.sol --contract AeternumVaultEchidna --config echidna.config.yml
 ```
 
 ### Deployment
