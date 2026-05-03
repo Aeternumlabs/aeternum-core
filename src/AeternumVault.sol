@@ -256,15 +256,16 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         // Check
         if (amount == 0) revert AeternumVault__NothingToWithdraw();
 
-        (bool success,) = msg.sender.call{value: amount}("");
-        if (!success) revert AeternumVault__TransferFailed();
-
         // Effects
         config.balance = 0;
         config.lastActivity = block.timestamp;
 
         emit Withdrawn(msg.sender, amount);
         emit ActivityPinged(msg.sender, block.timestamp);
+
+        // Interaction
+        (bool success,) = msg.sender.call{value: amount}("");
+        if (!success) revert AeternumVault__TransferFailed();
     }
 
     /**
