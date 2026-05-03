@@ -50,9 +50,9 @@ contract AeternumVaultEchidna {
     address internal constant TREASURY = address(0x4000000000000000000000000000000000000000);
 
     /// @dev Backup addresses — distinct from actor addresses
-    address internal constant BACKUP1 = address(0xB0000000000000000000000000000000000000b1);
-    address internal constant BACKUP2 = address(0xB0000000000000000000000000000000000000b2);
-    address internal constant BACKUP3 = address(0xB0000000000000000000000000000000000000b3);
+    address internal constant BACKUP1 = address(0xB0000000000000000000000000000000000000B1);
+    address internal constant BACKUP2 = address(0xB0000000000000000000000000000000000000B2);
+    address internal constant BACKUP3 = address(0xB0000000000000000000000000000000000000B3);
 
     /// @dev Valid inactivity periods for testing
     uint256 internal constant FREE_PERIOD    = 365 days;
