@@ -1,0 +1,52 @@
+# Echidna configuration for AeternumVault
+# Docs: https://github.com/crytic/echidna/wiki/Config
+
+# ── Fuzzing mode ────────────────────────────────────────────────────────────
+# assertion: checks for Solidity assert() violations
+# property:  checks that echidna_* functions always return true (our mode)
+testMode: "property"
+
+# ── Test limits ─────────────────────────────────────────────────────────────
+# How many test sequences to run
+testLimit: 50000
+
+# Maximum number of function calls per sequence
+seqLen: 100
+
+# ── Corpus ──────────────────────────────────────────────────────────────────
+# Save and reuse interesting sequences across runs (coverage-guided fuzzing)
+corpusDir: "echidna-corpus"
+
+# ── Coverage ────────────────────────────────────────────────────────────────
+# Collect coverage data to guide fuzzing toward uncovered branches
+coverage: true
+
+# ── Sender addresses ────────────────────────────────────────────────────────
+# Echidna will use these as msg.sender for fuzzing
+# Matches the test contract's actor addresses
+sender:
+  - "0x1000000000000000000000000000000000000000"  # actor1
+  - "0x2000000000000000000000000000000000000000"  # actor2
+  - "0x3000000000000000000000000000000000000000"  # actor3
+  - "0x4000000000000000000000000000000000000000"  # actor4 (treasury)
+
+# ── ETH balances ────────────────────────────────────────────────────────────
+# Give each actor enough ETH to interact meaningfully
+balance: "1000000000000000000000"  # 1000 ETH per actor
+
+# ── Contract balance ────────────────────────────────────────────────────────
+# Initial contract ETH balance
+contractAddr: "0x00a329c0648769A73afAc7F9381E08FB43dBEA72"
+
+# ── Shrinking ───────────────────────────────────────────────────────────────
+# How hard Echidna tries to minimize a failing sequence
+shrinkLimit: 5000
+
+# ── Output ──────────────────────────────────────────────────────────────────
+# text: human-readable, json: machine-parseable
+format: "text"
+
+# Print coverage summary after run
+cryticArgs:
+  - "--solc-remaps"
+  - "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
