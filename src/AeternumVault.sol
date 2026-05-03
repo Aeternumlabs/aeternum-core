@@ -252,7 +252,12 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     function withdrawAll() external onlyRegistered nonReentrant {
         RecoveryConfig storage config = s_configs[msg.sender];
         uint256 amount = config.balance;
+
+        // Check
         if (amount == 0) revert AeternumVault__NothingToWithdraw();
+
+        (bool success,) = msg.sender.call{value: amount}("");
+        if (!success) revert AeternumVault__TransferFailed();
 
         // Effects
         config.balance = 0;
@@ -260,10 +265,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
         emit Withdrawn(msg.sender, amount);
         emit ActivityPinged(msg.sender, block.timestamp);
-
-        // Interaction
-        (bool success,) = msg.sender.call{value: amount}("");
-        if (!success) revert AeternumVault__TransferFailed();
     }
 
     /**
