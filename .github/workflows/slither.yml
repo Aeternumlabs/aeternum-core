@@ -32,4 +32,4 @@ jobs:
           slither src/AeternumVault.sol \
             --solc-remaps "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/" \
             --filter-paths "lib/" \
-            --no-fail-pedantic
+            --fail-high
