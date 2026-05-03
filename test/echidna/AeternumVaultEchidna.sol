@@ -44,18 +44,18 @@ contract AeternumVaultEchidna {
     AeternumVault internal vault;
 
     /// @dev Fixed actor addresses — must match echidna.config.yml senders
-    address internal constant ACTOR1   = address(0x1000000000000000000000000000000000000000);
-    address internal constant ACTOR2   = address(0x2000000000000000000000000000000000000000);
-    address internal constant ACTOR3   = address(0x3000000000000000000000000000000000000000);
+    address internal constant ACTOR1 = address(0x1000000000000000000000000000000000000000);
+    address internal constant ACTOR2 = address(0x2000000000000000000000000000000000000000);
+    address internal constant ACTOR3 = address(0x3000000000000000000000000000000000000000);
     address internal constant TREASURY = address(0x4000000000000000000000000000000000000000);
 
     /// @dev Backup addresses — distinct from actor addresses
     address internal constant BACKUP1 = address(0xB0000000000000000000000000000000000000B1);
     address internal constant BACKUP2 = address(0xB0000000000000000000000000000000000000B2);
-    address internal constant BACKUP3 = address(0xB0000000000000000000000000000000000000B3);
+    address internal constant BACKUP3 = address(0xB0000000000000000000000000000000000000b3);
 
     /// @dev Valid inactivity periods for testing
-    uint256 internal constant FREE_PERIOD    = 365 days;
+    uint256 internal constant FREE_PERIOD = 365 days;
     uint256 internal constant PREMIUM_PERIOD = 180 days;
 
     /*//////////////////////////////////////////////////////////////
@@ -95,11 +95,7 @@ contract AeternumVaultEchidna {
         (address actor, address backup) = _toActor(actorSeed);
         if (_isRegistered(actor)) return;
 
-        try vault.register{value: 1 ether}(
-            backup,
-            FREE_PERIOD,
-            IAeternumVault.SubscriptionTier.Free
-        ) {} catch {}
+        try vault.register{value: 1 ether}(backup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free) {} catch {}
     }
 
     /**
@@ -111,11 +107,8 @@ contract AeternumVaultEchidna {
 
         uint256 fee = vault.PREMIUM_MONTHLY_FEE();
 
-        try vault.register{value: 1 ether + fee}(
-            backup,
-            PREMIUM_PERIOD,
-            IAeternumVault.SubscriptionTier.Premium
-        ) {} catch {}
+        try vault.register{value: 1 ether + fee}(backup, PREMIUM_PERIOD, IAeternumVault.SubscriptionTier.Premium) {}
+            catch {}
     }
 
     /**
@@ -383,10 +376,7 @@ contract AeternumVaultEchidna {
         for (uint256 i = 0; i < actors.length; i++) {
             IAeternumVault.RecoveryConfig memory cfg = vault.getRecoveryConfig(actors[i]);
             if (!cfg.isActive) continue;
-            if (
-                cfg.tier == IAeternumVault.SubscriptionTier.Free
-                    && cfg.subscriptionExpiry != 0
-            ) {
+            if (cfg.tier == IAeternumVault.SubscriptionTier.Free && cfg.subscriptionExpiry != 0) {
                 return false;
             }
         }
