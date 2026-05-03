@@ -156,9 +156,6 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
   ```bash
   # install from docker
   docker pull ghcr.io/crytic/echidna/echidna
-
-  # Create config file 
-  touch echidna.config.yml
   ```
 
 - **[Solhint](https://github.com/protofire/solhint)** — Linting
