@@ -22,6 +22,7 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 - [Development](#development)
 - [Chainlink Automation Setup](#chainlink-automation-setup)
 - [Security](#security)
+- [Audit](#audit)
 - [License](#license)
 
 ## Architecture
@@ -320,9 +321,15 @@ The contract uses pagination — each upkeep monitors a specific window of regis
   Silenced and acknowledged — exploitation is prevented by `nonReentrant` on `performUpkeep`, 
   balance zeroing before the call, and permanent abandonment after 3 consecutive failures.
 
-### Audit Status
+## Audit
 
-> Pending — targeting audit engagement prior to mainnet deployment.
+### Internal audit report
+
+- [Aeternum-core audit report](https://github.com/)
+
+### External audit report
+
+> Pending — targeting external audit engagement prior to mainnet deployment.
 
 ### Bug Bounty
 
