@@ -11,7 +11,7 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 
 ## Table of Contents
 
-- [Documentation](docs/aeternum_intro.pdf)
+- [Documentation](docs/Aeternum_intro.pdf)
 - [Architecture](#architecture)
 - [Repository Structure](#repository-structure)
 - [Trust Model](#trust-model)
