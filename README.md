@@ -24,12 +24,6 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 - [Security](#security)
 - [License](#license)
 
-## Documentation
-
-- [Aeternum Core Overview](#how-it-works)
-- [Chainlink Automation Docs](https://docs.chain.link/chainlink-automation)
-- [Foundry Book](https://book.getfoundry.sh)
-
 ## Architecture
 
 Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Chainlink Automation nodes monitor all registered vaults off-chain and execute recovery on-chain only when inactivity conditions are met.
