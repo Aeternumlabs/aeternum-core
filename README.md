@@ -325,7 +325,7 @@ The contract uses pagination — each upkeep monitors a specific window of regis
 
 ### Internal audit report
 
-- [Aeternum-core audit report](https://github.com/)
+- [Aeternum-core audit report](audits/2026-05-04_Aeternum-core_audit.pdf)
 
 ### External audit report
 
