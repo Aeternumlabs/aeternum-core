@@ -81,7 +81,7 @@ aeternum-core/
 | **Treasury** | Withdraw accumulated subscription fees | Touch user vault balances |
 | **Chainlink Automation** | Call `performUpkeep` when inactivity conditions are met | Alter configs or redirect funds |
 | **Anyone** | Call `checkUpkeep` (read-only, off-chain simulation) | Trigger recovery before period elapses |
-| **No one** | Pause recovery, upgrade the contract, or access user funds | — |
+| **No one** | — | Pause recovery, upgrade the contract, or access user funds |
 
 ## How It Works
 
