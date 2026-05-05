@@ -233,6 +233,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *         Emits {Deposited} and {ActivityPinged}.
      */
     function deposit() external payable onlyRegistered nonReentrant {
+
+        // Check
         if (msg.value == 0) revert AeternumVault__InsufficientBalance();
 
         // Effects
@@ -280,6 +282,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      * @param amount Amount to send in wei. Must be ≤ caller's vault balance.
      */
     function send(address to, uint256 amount) external onlyRegistered nonReentrant {
+
+        // Checks
         if (to == address(0)) revert AeternumVault__InvalidBackupAddress();
         if (amount == 0) revert AeternumVault__NothingToWithdraw();
 
@@ -367,6 +371,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *         Emits {SubscriptionRenewed} and {ActivityPinged}.
      */
     function renewSubscription() external payable onlyRegistered nonReentrant {
+
+        // Check
         if (msg.value < PREMIUM_MONTHLY_FEE) revert AeternumVault__InsufficientSubscriptionFee();
 
         RecoveryConfig storage config = s_configs[msg.sender];
@@ -545,6 +551,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     function withdrawSubscriptionFees() external onlyTreasury nonReentrant {
         uint256 amount = s_accumulatedFees;
+
+        // Check
         if (amount == 0) revert AeternumVault__NothingToWithdraw();
 
         // Effects
