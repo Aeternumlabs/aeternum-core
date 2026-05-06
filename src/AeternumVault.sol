@@ -52,35 +52,35 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  */
 contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleInterface {
     /*//////////////////////////////////////////////////////////////
-                               CONSTANTS
+                            IMMUTABLES
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Minimum inactivity period allowed for Free tier users.
-    uint256 public constant MIN_INACTIVITY_PERIOD_FREE = 365 days;
+    uint256 public immutable MIN_INACTIVITY_PERIOD_FREE;
 
     /// @notice Minimum inactivity period allowed for Premium tier users.
-    uint256 public constant MIN_INACTIVITY_PERIOD_PREMIUM = 180 days;
+    uint256 public immutable MIN_INACTIVITY_PERIOD_PREMIUM;
 
     /// @notice Hard ceiling on any inactivity period (prevents permanent lock-up).
-    uint256 public constant MAX_INACTIVITY_PERIOD = 3650 days;
+    uint256 public immutable MAX_INACTIVITY_PERIOD;
 
     /// @notice Duration of a Premium subscription.
-    uint256 public constant SUBSCRIPTION_DURATION = 30 days;
+    uint256 public immutable SUBSCRIPTION_DURATION;
 
     /**
      * @notice Monthly fee (in wei) required to register or renew a Premium subscription.
      * @dev    Intentionally kept low for accessibility. Can be adjusted in a future
      *         version via governance or an upgradeable proxy pattern.
      */
-    uint256 public constant PREMIUM_MONTHLY_FEE = 0.002 ether;
+    uint256 public immutable PREMIUM_MONTHLY_FEE;
 
     /// @notice Maximum wallets processed in a single `performUpkeep` call.
     /// @dev    Keeps on-chain gas consumption predictable and within Chainlink limits.
-    uint256 public constant MAX_BATCH_SIZE = 50;
+    uint256 public immutable MAX_BATCH_SIZE;
 
     /// @notice Maximum consecutive failed recovery attempts before a wallet is
     ///         permanently deregistered and its balance becomes self-claimable.
-    uint8 public constant MAX_RECOVERY_ATTEMPTS = 3;
+    uint8 public immutable MAX_RECOVERY_ATTEMPTS;
 
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
@@ -139,10 +139,33 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      * @param treasury_ Address that may withdraw accumulated subscription fees.
      *                  Recommended to be a multi-sig (e.g. Gnosis Safe) in production.
      */
-    constructor(address treasury_) {
-        if (treasury_ == address(0)) revert AeternumVault__ZeroAddress();
-        s_treasury = treasury_;
-    }
+constructor(
+    address treasury_,
+    uint256 minInactivityFree_,
+    uint256 minInactivityPremium_,
+    uint256 maxInactivityPeriod_,
+    uint256 subscriptionDuration_,
+    uint256 premiumMonthlyFee_,
+    uint256 maxBatchSize_,
+    uint8 maxRecoveryAttempts_
+) {
+    if (treasury_ == address(0)) revert AeternumVault__ZeroAddress();
+    if (minInactivityPremium_ == 0) revert AeternumVault__InvalidInactivityPeriod();
+    if (minInactivityFree_ < minInactivityPremium_) revert AeternumVault__InvalidInactivityPeriod();
+    if (maxInactivityPeriod_ < minInactivityFree_) revert AeternumVault__InvalidInactivityPeriod();
+    if (subscriptionDuration_ == 0) revert AeternumVault__InvalidSubscriptionDuration();
+    if (maxBatchSize_ == 0) revert AeternumVault__MaxBatchSizeExceeded();
+    if (maxRecoveryAttempts_ == 0) revert AeternumVault__MaxRecoveryAttemptsExceeded();
+
+    s_treasury              = treasury_;
+    MIN_INACTIVITY_PERIOD_FREE    = minInactivityFree_;
+    MIN_INACTIVITY_PERIOD_PREMIUM = minInactivityPremium_;
+    MAX_INACTIVITY_PERIOD         = maxInactivityPeriod_;
+    SUBSCRIPTION_DURATION         = subscriptionDuration_;
+    PREMIUM_MONTHLY_FEE           = premiumMonthlyFee_;
+    MAX_BATCH_SIZE                = maxBatchSize_;
+    MAX_RECOVERY_ATTEMPTS         = maxRecoveryAttempts_;
+}
 
     /*//////////////////////////////////////////////////////////////
                          USER-FACING FUNCTIONS
