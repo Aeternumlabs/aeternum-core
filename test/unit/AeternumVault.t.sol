@@ -138,6 +138,38 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getAccumulatedFees(), 0);
     }
 
+    function test_constructor_revertsIfPremiumMinIsZero() public {
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
+        new AeternumVault(treasury, 365 days, 0, 3650 days, 30 days, 0.002 ether, 50, 3);
+    }
+
+    function test_constructor_revertsIfFreeMinLessThanPremiumMin() public {
+        // Free min (100 days) < Premium min (200 days) — violates ordering invariant
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
+        new AeternumVault(treasury, 100 days, 200 days, 3650 days, 30 days, 0.002 ether, 50, 3);
+    }
+
+    function test_constructor_revertsIfMaxLessThanFreeMin() public {
+        // Max (300 days) < Free min (365 days)
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
+        new AeternumVault(treasury, 365 days, 180 days, 300 days, 30 days, 0.002 ether, 50, 3);
+    }
+
+    function test_constructor_revertsIfSubscriptionDurationIsZero() public {
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidSubscriptionDuration.selector);
+        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 0, 0.002 ether, 50, 3);
+    }
+
+    function test_constructor_revertsIfMaxBatchSizeIsZero() public {
+        vm.expectRevert(IAeternumVault.AeternumVault__MaxBatchSizeExceeded.selector);
+        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0, 3);
+    }
+
+    function test_constructor_revertsIfMaxRecoveryAttemptsIsZero() public {
+        vm.expectRevert(IAeternumVault.AeternumVault__MaxRecoveryAttemptsExceeded.selector);
+        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 50, 0);
+    }
+
     /*//////////////////////////////////////////////////////////////
                        2. REGISTER — SUCCESS PATHS
     //////////////////////////////////////////////////////////////*/
@@ -346,6 +378,16 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.withdrawAll();
     }
 
+    function test_withdrawAll_revertsIfTransferFails() public {
+        RejectingCallerMock rejecter = new RejectingCallerMock(address(rm));
+        deal(address(rejecter), 2 ether);
+
+        rejecter.doRegister{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD);
+
+        vm.expectRevert(IAeternumVault.AeternumVault__TransferFailed.selector);
+        rejecter.doWithdrawAll();
+    }
+
     /*//////////////////////////////////////////////////////////////
                           5b. SEND
     //////////////////////////////////////////////////////////////*/
@@ -420,6 +462,15 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.expectRevert(IAeternumVault.AeternumVault__NotRegistered.selector);
         vm.prank(alice);
         rm.send(makeAddr("recipient"), 0.1 ether);
+    }
+
+    function test_send_revertsIfTransferFails() public {
+        _registerAliceFree();
+        RejectingReceiver rejecter = new RejectingReceiver();
+
+        vm.expectRevert(IAeternumVault.AeternumVault__TransferFailed.selector);
+        vm.prank(alice);
+        rm.send(address(rejecter), 0.1 ether);
     }
 
     function testFuzz_send_amount(uint128 amount) public {
@@ -552,6 +603,14 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.updateInactivityPeriod(45 days); // 45 < 180 days free min
     }
 
+    function test_updateInactivityPeriod_revertsIfPeriodTooLong() public {
+        _registerAliceFree();
+        uint256 invalidPeriod = rm.MAX_INACTIVITY_PERIOD() + 1;
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
+        vm.prank(alice);
+        rm.updateInactivityPeriod(invalidPeriod);
+    }
+
     /*//////////////////////////////////////////////////////////////
                     8. SUBSCRIPTION RENEWAL
     //////////////////////////////////////////////////////////////*/
@@ -680,6 +739,16 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         assertEq(rm.getTotalRegistered(), 0);
         assertFalse(rm.isRegistered(alice));
+    }
+
+    function test_cancelRecovery_revertsIfTransferFails() public {
+        RejectingCallerMock rejecter = new RejectingCallerMock(address(rm));
+        deal(address(rejecter), 2 ether);
+
+        rejecter.doRegister{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD);
+
+        vm.expectRevert(IAeternumVault.AeternumVault__TransferFailed.selector);
+        rejecter.doCancelRecovery();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -931,6 +1000,27 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
     }
 
+    function test_performUpkeep_skipsIfBalanceIsZero() public {
+        // Register with zero balance — checkUpkeep would never include this wallet,
+        // but a stale or manually crafted performData might. _executeRecovery must
+        // handle it gracefully via the balance == 0 guard.
+        vm.prank(alice);
+        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+
+        _warpPastInactivity(alice);
+
+        // Craft performData manually — checkUpkeep would have returned false here
+        address[] memory wallets = new address[](1);
+        wallets[0] = alice;
+        bytes memory performData = abi.encode(wallets);
+
+        rm.performUpkeep(performData);
+
+        // Alice's config is untouched — skipped cleanly
+        assertTrue(rm.getRecoveryConfig(alice).isActive);
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+    }
+
     function test_performUpkeep_revertsIfBatchTooLarge() public {
         uint256 overSize = rm.MAX_BATCH_SIZE() + 1;
         address[] memory tooMany = new address[](overSize);
@@ -1180,6 +1270,19 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(newTreasury);
         rm.withdrawSubscriptionFees(); // should succeed
         assertEq(rm.getAccumulatedFees(), 0);
+    }
+
+    function test_withdrawSubscriptionFees_revertsIfTransferFails() public {
+        // Accumulate fees first
+        _registerAlicePremium();
+
+        // Hand treasury authority to a contract that rejects ETH
+        RejectingTreasuryMock rejectingTreasury = new RejectingTreasuryMock(address(rm));
+        vm.prank(treasury);
+        rm.updateTreasury(address(rejectingTreasury));
+
+        vm.expectRevert(IAeternumVault.AeternumVault__TransferFailed.selector);
+        rejectingTreasury.doWithdrawFees();
     }
 
     /*//////////////////////////////////////////////////////////////
