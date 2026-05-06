@@ -139,33 +139,33 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      * @param treasury_ Address that may withdraw accumulated subscription fees.
      *                  Recommended to be a multi-sig (e.g. Gnosis Safe) in production.
      */
-constructor(
-    address treasury_,
-    uint256 minInactivityFree_,
-    uint256 minInactivityPremium_,
-    uint256 maxInactivityPeriod_,
-    uint256 subscriptionDuration_,
-    uint256 premiumMonthlyFee_,
-    uint256 maxBatchSize_,
-    uint8 maxRecoveryAttempts_
-) {
-    if (treasury_ == address(0)) revert AeternumVault__ZeroAddress();
-    if (minInactivityPremium_ == 0) revert AeternumVault__InvalidInactivityPeriod();
-    if (minInactivityFree_ < minInactivityPremium_) revert AeternumVault__InvalidInactivityPeriod();
-    if (maxInactivityPeriod_ < minInactivityFree_) revert AeternumVault__InvalidInactivityPeriod();
-    if (subscriptionDuration_ == 0) revert AeternumVault__InvalidSubscriptionDuration();
-    if (maxBatchSize_ == 0) revert AeternumVault__MaxBatchSizeExceeded();
-    if (maxRecoveryAttempts_ == 0) revert AeternumVault__MaxRecoveryAttemptsExceeded();
+    constructor(
+        address treasury_,
+        uint256 minInactivityFree_,
+        uint256 minInactivityPremium_,
+        uint256 maxInactivityPeriod_,
+        uint256 subscriptionDuration_,
+        uint256 premiumMonthlyFee_,
+        uint256 maxBatchSize_,
+        uint8 maxRecoveryAttempts_
+    ) {
+        if (treasury_ == address(0)) revert AeternumVault__ZeroAddress();
+        if (minInactivityPremium_ == 0) revert AeternumVault__InvalidInactivityPeriod();
+        if (minInactivityFree_ < minInactivityPremium_) revert AeternumVault__InvalidInactivityPeriod();
+        if (maxInactivityPeriod_ < minInactivityFree_) revert AeternumVault__InvalidInactivityPeriod();
+        if (subscriptionDuration_ == 0) revert AeternumVault__InvalidSubscriptionDuration();
+        if (maxBatchSize_ == 0) revert AeternumVault__MaxBatchSizeExceeded();
+        if (maxRecoveryAttempts_ == 0) revert AeternumVault__MaxRecoveryAttemptsExceeded();
 
-    s_treasury              = treasury_;
-    MIN_INACTIVITY_PERIOD_FREE    = minInactivityFree_;
-    MIN_INACTIVITY_PERIOD_PREMIUM = minInactivityPremium_;
-    MAX_INACTIVITY_PERIOD         = maxInactivityPeriod_;
-    SUBSCRIPTION_DURATION         = subscriptionDuration_;
-    PREMIUM_MONTHLY_FEE           = premiumMonthlyFee_;
-    MAX_BATCH_SIZE                = maxBatchSize_;
-    MAX_RECOVERY_ATTEMPTS         = maxRecoveryAttempts_;
-}
+        s_treasury = treasury_;
+        MIN_INACTIVITY_PERIOD_FREE = minInactivityFree_;
+        MIN_INACTIVITY_PERIOD_PREMIUM = minInactivityPremium_;
+        MAX_INACTIVITY_PERIOD = maxInactivityPeriod_;
+        SUBSCRIPTION_DURATION = subscriptionDuration_;
+        PREMIUM_MONTHLY_FEE = premiumMonthlyFee_;
+        MAX_BATCH_SIZE = maxBatchSize_;
+        MAX_RECOVERY_ATTEMPTS = maxRecoveryAttempts_;
+    }
 
     /*//////////////////////////////////////////////////////////////
                          USER-FACING FUNCTIONS

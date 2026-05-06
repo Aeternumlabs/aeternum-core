@@ -105,12 +105,14 @@ interface IAeternumVault {
     error AeternumVault__AlreadyRegistered();
     error AeternumVault__NotRegistered();
     error AeternumVault__InvalidBackupAddress();
-    error AeternumVault__InvalidInactivityPeriod();
     error AeternumVault__ZeroAddress();
+    error AeternumVault__InvalidInactivityPeriod();
+    error AeternumVault__InvalidSubscriptionDuration();
+    error AeternumVault__MaxBatchSizeExceeded();
+    error AeternumVault__MaxRecoveryAttemptsExceeded();
     error AeternumVault__TransferFailed();
     error AeternumVault__NotAuthorized();
     error AeternumVault__InsufficientSubscriptionFee();
-    error AeternumVault__MaxBatchSizeExceeded();
     error AeternumVault__NothingToWithdraw();
     error AeternumVault__InsufficientBalance();
     error AeternumVault__DirectTransferNotAllowed();
