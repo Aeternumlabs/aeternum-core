@@ -73,10 +73,7 @@ contract HelperConfig is Script {
      *      REPLACE with your Sepolia treasury/EOA address.
      */
     function _getSepoliaConfig() internal view returns (NetworkConfig memory) {
-        return
-            NetworkConfig({
-                treasury: vm.envAddress("SEPOLIA_TREASURY")
-            });
+        return NetworkConfig({treasury: vm.envAddress("SEPOLIA_TREASURY")});
     }
 
     /**
