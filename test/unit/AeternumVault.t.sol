@@ -43,9 +43,10 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     uint256 public constant STARTING_BALANCE = 100 ether;
     uint256 public constant DEPOSIT_1_ETH = 1 ether;
-    uint256 public constant FREE_PERIOD = 365 days;
-    uint256 public constant PREMIUM_PERIOD = 180 days;
-    uint256 public constant PREMIUM_FEE = 0.002 ether;
+
+    uint256 public FREE_PERIOD;
+    uint256 public PREMIUM_PERIOD;
+    uint256 public PREMIUM_FEE;
 
     event RecoveryRegistered(
         address indexed wallet,
@@ -67,7 +68,20 @@ contract AeternumVaultTest is StdInvariant, Test {
     event SubscriptionFeesWithdrawn(address indexed treasury, uint256 amount);
 
     function setUp() public {
-        rm = new AeternumVault(treasury);
+        rm = new AeternumVault(
+            treasury,
+            365 days, // MIN_INACTIVITY_PERIOD_FREE
+            180 days, // MIN_INACTIVITY_PERIOD_PREMIUM
+            3650 days, // MAX_INACTIVITY_PERIOD
+            30 days, // SUBSCRIPTION_DURATION
+            0.002 ether, // PREMIUM_MONTHLY_FEE
+            50, // MAX_BATCH_SIZE
+            3 // MAX_RECOVERY_ATTEMPTS
+        );
+
+        FREE_PERIOD = rm.MIN_INACTIVITY_PERIOD_FREE();
+        PREMIUM_PERIOD = rm.MIN_INACTIVITY_PERIOD_PREMIUM();
+        PREMIUM_FEE = rm.PREMIUM_MONTHLY_FEE();
 
         deal(alice, STARTING_BALANCE);
         deal(bob, STARTING_BALANCE);
@@ -114,7 +128,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_constructor_revertsOnZeroTreasury() public {
         vm.expectRevert(IAeternumVault.AeternumVault__ZeroAddress.selector);
-        new AeternumVault(address(0));
+        new AeternumVault(address(0), 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 50, 3);
     }
 
     function test_constructor_initialState() public view {

@@ -63,7 +63,16 @@ contract AeternumVaultEchidna {
     //////////////////////////////////////////////////////////////*/
 
     constructor() payable {
-        vault = new AeternumVault(TREASURY);
+        vault = new AeternumVault(
+            TREASURY,
+            365 days, // MIN_INACTIVITY_PERIOD_FREE
+            180 days, // MIN_INACTIVITY_PERIOD_PREMIUM
+            3650 days, // MAX_INACTIVITY_PERIOD
+            30 days, // SUBSCRIPTION_DURATION
+            0.002 ether, // PREMIUM_MONTHLY_FEE
+            50, // MAX_BATCH_SIZE
+            3 // MAX_RECOVERY_ATTEMPTS
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
