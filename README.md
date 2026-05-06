@@ -16,7 +16,7 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 - [Repository Structure](#repository-structure)
 - [Trust Model](#trust-model)
 - [How It Works](#how-it-works)
-- [Constants](#constants)
+- [Immutables](#immutables)
 - [Dependencies](#dependencies)
 - [Quickstart](#quickstart)
 - [Development](#development)
@@ -109,17 +109,17 @@ If a backup address cannot receive ETH (e.g. a contract that rejects transfers),
 
 Users can call `cancelRecovery()` at any time to withdraw their full balance and deregister from monitoring in a single transaction.
 
-## Constants
+## Immutables
 
-| Constant | Value | Description |
-|---|---|---|
-| `MIN_INACTIVITY_PERIOD_FREE` | 365 days | Minimum inactivity period for Free tier |
-| `MIN_INACTIVITY_PERIOD_PREMIUM` | 180 days | Minimum inactivity period for Premium tier |
-| `MAX_INACTIVITY_PERIOD` | 3650 days | Hard ceiling — 10 years |
-| `SUBSCRIPTION_DURATION` | 30 days | Premium subscription window |
-| `PREMIUM_MONTHLY_FEE` | 0.002 ETH | Fee required for Premium registration or renewal |
-| `MAX_BATCH_SIZE` | 50 | Maximum wallets processed per `performUpkeep` call |
-| `MAX_RECOVERY_ATTEMPTS` | 3 | Consecutive failures before vault is abandoned |
+| Immutable variable | Value for mainnet | value for testnet | Description |
+|---|---|---|---|
+| `MIN_INACTIVITY_PERIOD_FREE` | 365 days | 10 minutes | Minimum inactivity period for Free tier |
+| `MIN_INACTIVITY_PERIOD_PREMIUM` | 180 days | 5 minutes | Minimum inactivity period for Premium tier |
+| `MAX_INACTIVITY_PERIOD` | 3650 days | 30 minutes | Hard ceiling |
+| `SUBSCRIPTION_DURATION` | 30 days | 2.5 minutes | Premium subscription window |
+| `PREMIUM_MONTHLY_FEE` | 0.002 ETH | 0.002 ETH | Fee required for Premium registration or renewal |
+| `MAX_BATCH_SIZE` | 50 | 50 | Maximum wallets processed per `performUpkeep` call |
+| `MAX_RECOVERY_ATTEMPTS` | 3 | 3 | Consecutive failures before vault is abandoned |
 
 ## Dependencies
 
@@ -197,6 +197,9 @@ BASE_MAINNET_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
 
 # Etherscan verification
 ETHERSCAN_API_KEY=YOUR_ETHERSCAN_KEY
+
+# Treasury addresses
+SEPOLIA_TREASURY=0xYourSepoliaAddressHere
 ```
 
 ### 4. Build contracts
