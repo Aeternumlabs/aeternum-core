@@ -187,19 +187,8 @@ forge install
 ### 3. Set environment variables
 
 ```bash
+# Copy .env.example file to .env and fill in values
 cp .env.example .env
-# Copy this file to .env and fill in values
-# NEVER commit .env to version control
-
-# RPC endpoints
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
-BASE_MAINNET_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
-
-# Etherscan verification
-ETHERSCAN_API_KEY=YOUR_ETHERSCAN_KEY
-
-# Treasury addresses
-SEPOLIA_TREASURY=0xYourSepoliaAddressHere
 ```
 
 ### 4. Build contracts
