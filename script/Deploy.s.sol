@@ -48,7 +48,7 @@ contract Deploy is Script {
         console2.log("Timestamp:            ", block.timestamp);
         console2.log("MIN_FREE (seconds):   ", cfg.minInactivityFree);
         console2.log("MIN_PREMIUM (seconds):", cfg.minInactivityPremium);
-        console2.log("MAX_PERIOD (days):    ", cfg.maxInactivityPeriod / 1 days);
+        console2.log("MAX_PERIOD (seconds): ", cfg.maxInactivityPeriod);
         console2.log("SUB_DURATION (secs):  ", cfg.subscriptionDuration);
         console2.log("PREMIUM_FEE (wei):    ", cfg.premiumMonthlyFee);
         console2.log("MAX_BATCH_SIZE:       ", cfg.maxBatchSize);
@@ -87,7 +87,7 @@ contract Deploy is Script {
         console2.log("PREMIUM_FEE (wei):    ", rm.PREMIUM_MONTHLY_FEE());
         console2.log("MIN_FREE (seconds):   ", rm.MIN_INACTIVITY_PERIOD_FREE());
         console2.log("MIN_PREMIUM (seconds):", rm.MIN_INACTIVITY_PERIOD_PREMIUM());
-        console2.log("MAX_PERIOD (days):    ", rm.MAX_INACTIVITY_PERIOD() / 1 days);
+        console2.log("MAX_PERIOD (seconds):    ", rm.MAX_INACTIVITY_PERIOD());
         console2.log("SUB_DURATION (secs):  ", rm.SUBSCRIPTION_DURATION());
 
         // Assertions — revert the script if anything looks wrong

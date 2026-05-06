@@ -98,7 +98,7 @@ contract HelperConfig is Script {
             minInactivityFree: 10 minutes,
             minInactivityPremium: 5 minutes,
             maxInactivityPeriod: 30 minutes,
-            subscriptionDuration: 1 minutes,
+            subscriptionDuration: 2.5 minutes,
             premiumMonthlyFee: 0.002 ether,
             maxBatchSize: 50,
             maxRecoveryAttempts: 3
