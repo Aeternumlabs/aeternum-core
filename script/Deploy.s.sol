@@ -18,10 +18,11 @@ import {HelperConfig} from "./HelperConfig.s.sol";
  *
  *   # Sepolia testnet (broadcast + verify on Etherscan)
  *   forge script script/Deploy.s.sol \
+ *     --account private-key
  *     --rpc-url $SEPOLIA_RPC_URL \
- *     --broadcast \
- *     --verify \
  *     --etherscan-api-key $ETHERSCAN_API_KEY \
+ *     --verify \
+ *     --broadcast \
  *     -vvvv
  *
  *   # Mainnet (ALWAYS dry-run first, then add --broadcast)
