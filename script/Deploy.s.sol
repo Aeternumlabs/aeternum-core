@@ -91,16 +91,16 @@ contract Deploy is Script {
         console2.log("SUB_DURATION (secs):  ", rm.SUBSCRIPTION_DURATION());
 
         // Assertions — revert the script if anything looks wrong
-        require(rm.getTreasury() == cfg.treasury,                        "Deploy: treasury mismatch");
+        require(rm.getTreasury() == cfg.treasury, "Deploy: treasury mismatch");
         require(rm.MIN_INACTIVITY_PERIOD_FREE() == cfg.minInactivityFree, "Deploy: minInactivityFree mismatch");
         require(rm.MIN_INACTIVITY_PERIOD_PREMIUM() == cfg.minInactivityPremium, "Deploy: minInactivityPremium mismatch");
-        require(rm.MAX_INACTIVITY_PERIOD() == cfg.maxInactivityPeriod,   "Deploy: maxInactivityPeriod mismatch");
-        require(rm.SUBSCRIPTION_DURATION() == cfg.subscriptionDuration,  "Deploy: subscriptionDuration mismatch");
-        require(rm.PREMIUM_MONTHLY_FEE() == cfg.premiumMonthlyFee,       "Deploy: premiumMonthlyFee mismatch");
-        require(rm.MAX_BATCH_SIZE() == cfg.maxBatchSize,                 "Deploy: maxBatchSize mismatch");
-        require(rm.MAX_RECOVERY_ATTEMPTS() == cfg.maxRecoveryAttempts,   "Deploy: maxRecoveryAttempts mismatch");
-        require(rm.getTotalRegistered() == 0,                            "Deploy: unexpected registrations");
-        require(rm.getAccumulatedFees() == 0,                            "Deploy: unexpected fees");
+        require(rm.MAX_INACTIVITY_PERIOD() == cfg.maxInactivityPeriod, "Deploy: maxInactivityPeriod mismatch");
+        require(rm.SUBSCRIPTION_DURATION() == cfg.subscriptionDuration, "Deploy: subscriptionDuration mismatch");
+        require(rm.PREMIUM_MONTHLY_FEE() == cfg.premiumMonthlyFee, "Deploy: premiumMonthlyFee mismatch");
+        require(rm.MAX_BATCH_SIZE() == cfg.maxBatchSize, "Deploy: maxBatchSize mismatch");
+        require(rm.MAX_RECOVERY_ATTEMPTS() == cfg.maxRecoveryAttempts, "Deploy: maxRecoveryAttempts mismatch");
+        require(rm.getTotalRegistered() == 0, "Deploy: unexpected registrations");
+        require(rm.getAccumulatedFees() == 0, "Deploy: unexpected fees");
 
         console2.log("\nAll assertions passed. AeternumVault deployed successfully.");
     }
