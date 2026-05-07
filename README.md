@@ -111,7 +111,7 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 
 ## Immutables
 
-| Immutable variable | Value for mainnet | value for testnet | Description |
+| Immutable variable | Value for mainnet | Value for testnet | Description |
 |---|---|---|---|
 | `MIN_INACTIVITY_PERIOD_FREE` | 365 days | 10 minutes | Minimum inactivity period for Free tier |
 | `MIN_INACTIVITY_PERIOD_PREMIUM` | 180 days | 5 minutes | Minimum inactivity period for Premium tier |
@@ -250,6 +250,9 @@ echidna test/echidna/AeternumVaultEchidna.sol --contract AeternumVaultEchidna --
 ### Deployment
 
 ```bash
+# Import your private key into Foundry’s local keystore
+cast wallet import private-key --interactive
+
 # Dry run — Sepolia
 forge script script/Deploy.s.sol \
   --rpc-url $SEPOLIA_RPC_URL \
@@ -257,15 +260,25 @@ forge script script/Deploy.s.sol \
 
 # Live deploy + Etherscan verification — Sepolia
 forge script script/Deploy.s.sol \
+  --account private-key \
   --rpc-url $SEPOLIA_RPC_URL \
+  --etherscan-api-key $ETHERSCAN_API_KEY \
   --broadcast \
   --verify \
-  --etherscan-api-key $ETHERSCAN_API_KEY \
   -vvvv
 
-# Mainnet — ALWAYS dry run first
+# Dry run — Base Mainnet
 forge script script/Deploy.s.sol \
-  --rpc-url $MAINNET_RPC_URL \
+  --rpc-url $BASE_MAINNET_RPC_URL \
+  -vvvv
+
+# Live deploy + Basescan verification — Base Mainnet
+forge script script/Deploy.s.sol \
+  --account private-key \
+  --rpc-url $BASE_MAINNET_RPC_URL \
+  --basescan-api-key $BASESCAN_API_KEY \
+  --broadcast \
+  --verify \
   -vvvv
 ```
 
