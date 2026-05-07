@@ -16,7 +16,7 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 - [Repository Structure](#repository-structure)
 - [Trust Model](#trust-model)
 - [How It Works](#how-it-works)
-- [Immutables](#immutables)
+- [Immutable Variables](#immutable-variables)
 - [Dependencies](#dependencies)
 - [Quickstart](#quickstart)
 - [Development](#development)
@@ -109,7 +109,7 @@ If a backup address cannot receive ETH (e.g. a contract that rejects transfers),
 
 Users can call `cancelRecovery()` at any time to withdraw their full balance and deregister from monitoring in a single transaction.
 
-## Immutables
+## Immutable variables
 
 | Immutable variable | Value for mainnet | Value for testnet | Description |
 |---|---|---|---|
