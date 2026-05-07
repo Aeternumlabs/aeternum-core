@@ -18,15 +18,15 @@ import {HelperConfig} from "./HelperConfig.s.sol";
  *
  *   # Sepolia testnet (broadcast + verify on Etherscan)
  *   forge script script/Deploy.s.sol \
- *     --account private-key
+ *     --account private-key \
  *     --rpc-url $SEPOLIA_RPC_URL \
  *     --etherscan-api-key $ETHERSCAN_API_KEY \
  *     --verify \
  *     --broadcast \
  *     -vvvv
  *
- *   # Mainnet (ALWAYS dry-run first, then add --broadcast)
- *   forge script script/Deploy.s.sol --rpc-url $MAINNET_RPC_URL -vvvv
+ *   # Mainnet (ALWAYS dry-run first, before broadcasting)
+ *   forge script script/Deploy.s.sol --rpc-url $BASE_MAINNET_RPC_URL -vvvv
  */
 contract Deploy is Script {
     /*//////////////////////////////////////////////////////////////
