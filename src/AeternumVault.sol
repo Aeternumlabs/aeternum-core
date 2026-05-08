@@ -497,7 +497,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
             if (
                 config.isActive && config.balance > 0
-                    && block.timestamp >= config.lastActivity + config.inactivityPeriod
+                    && block.timestamp >= config.lastActivity + _effectiveInactivityPeriod(config)
             ) {
                 candidates[count] = wallet;
                 unchecked {
@@ -627,7 +627,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     function isRecoveryDue(address wallet) external view returns (bool) {
         RecoveryConfig storage config = s_configs[wallet];
-        return config.isActive && config.balance > 0 && block.timestamp >= config.lastActivity + config.inactivityPeriod;
+        return config.isActive && config.balance > 0
+            && block.timestamp >= config.lastActivity + _effectiveInactivityPeriod(config);
     }
 
     /**
@@ -639,7 +640,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         RecoveryConfig storage config = s_configs[wallet];
         if (!config.isActive || config.balance == 0) return 0;
 
-        uint256 deadline = config.lastActivity + config.inactivityPeriod;
+        uint256 deadline = config.lastActivity + _effectiveInactivityPeriod(config);
         if (block.timestamp >= deadline) return 0;
         return deadline - block.timestamp;
     }
@@ -684,6 +685,23 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     //////////////////////////////////////////////////////////////*/
 
     /**
+     * @notice Returns the effective inactivity period for a wallet at the current timestamp.
+     * @dev    If the wallet's Premium subscription has expired and the stored inactivity
+     *         period is below the Free minimum, the Free minimum is enforced.
+     *         This prevents expired Premium users from retaining sub-Free-tier periods
+     *         indefinitely without renewing.
+     * @param config The wallet's recovery config storage pointer.
+     */
+    function _effectiveInactivityPeriod(RecoveryConfig storage config) internal view returns (uint256) {
+        bool premiumActive = config.tier == SubscriptionTier.Premium && block.timestamp <= config.subscriptionExpiry;
+
+        if (!premiumActive && config.inactivityPeriod < MIN_INACTIVITY_PERIOD_FREE) {
+            return MIN_INACTIVITY_PERIOD_FREE;
+        }
+        return config.inactivityPeriod;
+    }
+
+    /**
      * @notice Executes recovery for a single wallet, transferring its balance to the backup address.
      * @dev Attempts to execute recovery for a single wallet.
      *      Re-validates all conditions so stale or duplicate entries are safely skipped.
@@ -725,7 +743,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         // Re-validate (Checks)
         if (!config.isActive) return;
         if (config.balance == 0) return;
-        if (block.timestamp < config.lastActivity + config.inactivityPeriod) return;
+        if (block.timestamp < config.lastActivity + _effectiveInactivityPeriod(config)) return;
 
         address backupAddress = config.backupAddress;
         uint256 amount = config.balance;
