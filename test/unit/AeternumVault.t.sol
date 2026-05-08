@@ -110,7 +110,10 @@ contract AeternumVaultTest is StdInvariant, Test {
     function _registerAlicePremium() internal {
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH + PREMIUM_FEE}(
-            aliceBackup, PREMIUM_PERIOD, IAeternumVault.SubscriptionTier.Premium, IAeternumVault.SubscriptionPlan.Monthly
+            aliceBackup,
+            PREMIUM_PERIOD,
+            IAeternumVault.SubscriptionTier.Premium,
+            IAeternumVault.SubscriptionPlan.Monthly
         );
     }
 
@@ -691,96 +694,92 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     function test_register_premium_annual_setsCorrectExpiry() public {
-    uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
-    vm.prank(alice);
-    rm.register{value: DEPOSIT_1_ETH + annualFee}(
-        aliceBackup, PREMIUM_PERIOD,
-        IAeternumVault.SubscriptionTier.Premium,
-        IAeternumVault.SubscriptionPlan.Annual
-    );
+        uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH + annualFee}(
+            aliceBackup, PREMIUM_PERIOD, IAeternumVault.SubscriptionTier.Premium, IAeternumVault.SubscriptionPlan.Annual
+        );
 
-    IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
-    assertEq(cfg.subscriptionExpiry, block.timestamp + 12 * rm.SUBSCRIPTION_DURATION());
-}
-
-function test_renewSubscription_annual_extendsBy12Periods() public {
-    _registerAlicePremium();
-    uint256 currentExpiry = rm.getRecoveryConfig(alice).subscriptionExpiry;
-    uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
-
-    vm.prank(alice);
-    rm.renewSubscription{value: annualFee}(IAeternumVault.SubscriptionPlan.Annual);
-
-    assertEq(
-        rm.getRecoveryConfig(alice).subscriptionExpiry,
-        currentExpiry + 12 * rm.SUBSCRIPTION_DURATION()
-    );
-}
-
-function test_renewSubscription_annual_revertsIfFeeTooLow() public {
-    _registerAliceFree();
-    uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
-
-    vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
-    vm.prank(alice);
-    rm.renewSubscription{value: annualFee - 1}(IAeternumVault.SubscriptionPlan.Annual);
-}
-
-function test_register_revertsIfBackupIsAbandoned() public {
-    RejectingReceiver badBackup = new RejectingReceiver();
-    vm.prank(alice);
-    rm.register{value: DEPOSIT_1_ETH}(
-        address(badBackup), FREE_PERIOD,
-        IAeternumVault.SubscriptionTier.Free,
-        IAeternumVault.SubscriptionPlan.Monthly
-    );
-
-    for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-        _warpPastInactivity(alice);
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        assertEq(cfg.subscriptionExpiry, block.timestamp + 12 * rm.SUBSCRIPTION_DURATION());
     }
 
-    assertTrue(rm.isBackupAbandoned(address(badBackup)));
+    function test_renewSubscription_annual_extendsBy12Periods() public {
+        _registerAlicePremium();
+        uint256 currentExpiry = rm.getRecoveryConfig(alice).subscriptionExpiry;
+        uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
 
-    // Bob also tries to use the same bad backup — should be blocked
-    vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
-    vm.prank(bob);
-    rm.register{value: DEPOSIT_1_ETH}(
-        address(badBackup), FREE_PERIOD,
-        IAeternumVault.SubscriptionTier.Free,
-        IAeternumVault.SubscriptionPlan.Monthly
-    );
-}
+        vm.prank(alice);
+        rm.renewSubscription{value: annualFee}(IAeternumVault.SubscriptionPlan.Annual);
 
-function test_updateBackupAddress_revertsIfBackupIsAbandoned() public {
-    RejectingReceiver badBackup = new RejectingReceiver();
-    vm.prank(alice);
-    rm.register{value: DEPOSIT_1_ETH}(
-        address(badBackup), FREE_PERIOD,
-        IAeternumVault.SubscriptionTier.Free,
-        IAeternumVault.SubscriptionPlan.Monthly
-    );
-
-    for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-        _warpPastInactivity(alice);
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+        assertEq(rm.getRecoveryConfig(alice).subscriptionExpiry, currentExpiry + 12 * rm.SUBSCRIPTION_DURATION());
     }
 
-    // Alice re-registers fine with a new backup
-    vm.prank(alice);
-    rm.register{value: 0.5 ether}(
-        aliceBackup, FREE_PERIOD,
-        IAeternumVault.SubscriptionTier.Free,
-        IAeternumVault.SubscriptionPlan.Monthly
-    );
+    function test_renewSubscription_annual_revertsIfFeeTooLow() public {
+        _registerAliceFree();
+        uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
 
-    // But trying to update to the abandoned backup is blocked
-    vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
-    vm.prank(alice);
-    rm.updateBackupAddress(address(badBackup));
-}
+        vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
+        vm.prank(alice);
+        rm.renewSubscription{value: annualFee - 1}(IAeternumVault.SubscriptionPlan.Annual);
+    }
+
+    function test_register_revertsIfBackupIsAbandoned() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        assertTrue(rm.isBackupAbandoned(address(badBackup)));
+
+        // Bob also tries to use the same bad backup — should be blocked
+        vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+    }
+
+    function test_updateBackupAddress_revertsIfBackupIsAbandoned() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        // Alice re-registers fine with a new backup
+        vm.prank(alice);
+        rm.register{value: 0.5 ether}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        // But trying to update to the abandoned backup is blocked
+        vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
+        vm.prank(alice);
+        rm.updateBackupAddress(address(badBackup));
+    }
 
     /*//////////////////////////////////////////////////////////////
                        9. CANCEL RECOVERY
