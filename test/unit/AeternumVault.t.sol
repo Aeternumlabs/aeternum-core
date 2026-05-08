@@ -49,7 +49,6 @@ contract AeternumVaultTest is StdInvariant, Test {
     uint256 public FREE_PERIOD;
     uint256 public PREMIUM_PERIOD;
     uint256 public PREMIUM_FEE;
-    uint256 public PREMIUM_ANNUAL_FEE;
 
     event RecoveryRegistered(
         address indexed wallet,
@@ -86,7 +85,6 @@ contract AeternumVaultTest is StdInvariant, Test {
         FREE_PERIOD = rm.MIN_INACTIVITY_PERIOD_FREE();
         PREMIUM_PERIOD = rm.MIN_INACTIVITY_PERIOD_PREMIUM();
         PREMIUM_FEE = rm.PREMIUM_MONTHLY_FEE();
-        PREMIUM_FEE_ANN = rm.PREMIUM_ANNUAL_FEE();
 
         deal(alice, STARTING_BALANCE);
         deal(bob, STARTING_BALANCE);
