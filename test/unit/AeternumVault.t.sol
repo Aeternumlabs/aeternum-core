@@ -168,12 +168,12 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_constructor_revertsIfMaxBatchSizeIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__MaxBatchSizeExceeded.selector);
-        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0, 3);
+        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 0, 3);
     }
 
     function test_constructor_revertsIfMaxRecoveryAttemptsIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__MaxRecoveryAttemptsExceeded.selector);
-        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 50, 0);
+        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 50, 0);
     }
 
     /*//////////////////////////////////////////////////////////////
