@@ -130,7 +130,9 @@ interface IAeternumVault {
     //////////////////////////////////////////////////////////////*/
 
     // --- User-facing ---
-    function register(address backupAddress, uint256 inactivityPeriod, SubscriptionTier tier) external payable;
+    function register(address backupAddress, uint256 inactivityPeriod, SubscriptionTier tier, SubscriptionPlan plan)
+        external
+        payable;
 
     function deposit() external payable;
 
@@ -144,7 +146,7 @@ interface IAeternumVault {
 
     function updateInactivityPeriod(uint256 newPeriod) external;
 
-    function renewSubscription() external payable;
+    function renewSubscription(SubscriptionPlan plan) external payable;
 
     function cancelRecovery() external;
 

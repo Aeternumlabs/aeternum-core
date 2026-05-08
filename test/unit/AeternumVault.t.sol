@@ -206,7 +206,9 @@ contract AeternumVaultTest is StdInvariant, Test {
         emit Deposited(alice, DEPOSIT_1_ETH);
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function test_register_premium_storesConfig() public {
@@ -225,7 +227,9 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_register_withZeroDeposit_isValid() public {
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 0}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertEq(cfg.balance, 0);
@@ -236,7 +240,9 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         assertEq(rm.getTotalRegistered(), 2);
     }
@@ -250,32 +256,43 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         vm.expectRevert(IAeternumVault.AeternumVault__AlreadyRegistered.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function test_register_revertsIfBackupIsZeroAddress() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidBackupAddress.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(0), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(0), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function test_register_revertsIfBackupIsSelf() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidBackupAddress.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(alice, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            alice, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function test_register_free_revertsIfPeriodTooShort() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD - 1, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            aliceBackup, FREE_PERIOD - 1, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function test_register_premium_revertsIfPeriodTooShort() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH + PREMIUM_FEE}(
-            aliceBackup, PREMIUM_PERIOD - 1, IAeternumVault.SubscriptionTier.Premium
+            aliceBackup,
+            PREMIUM_PERIOD - 1,
+            IAeternumVault.SubscriptionTier.Premium,
+            IAeternumVault.SubscriptionPlan.Monthly
         );
     }
 
@@ -283,13 +300,20 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 tooLong = rm.MAX_INACTIVITY_PERIOD() + 1;
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, tooLong, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 0}(
+            aliceBackup, tooLong, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function test_register_premium_revertsIfFeeInsufficient() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.register{value: PREMIUM_FEE - 1}(aliceBackup, PREMIUM_PERIOD, IAeternumVault.SubscriptionTier.Premium);
+        rm.register{value: PREMIUM_FEE - 1}(
+            aliceBackup,
+            PREMIUM_PERIOD,
+            IAeternumVault.SubscriptionTier.Premium,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function test_register_revertsOnDirectTransfer() public {
@@ -377,7 +401,9 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_withdrawAll_revertsIfZeroBalance() public {
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 0}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         vm.expectRevert(IAeternumVault.AeternumVault__NothingToWithdraw.selector);
         vm.prank(alice);
@@ -643,7 +669,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}();
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
 
         IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertEq(uint256(cfg.tier), uint256(IAeternumVault.SubscriptionTier.Premium));
@@ -655,7 +681,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 currentExpiry = rm.getRecoveryConfig(alice).subscriptionExpiry;
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}();
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
 
         assertEq(rm.getRecoveryConfig(alice).subscriptionExpiry, currentExpiry + 30 days);
     }
@@ -665,7 +691,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 feesBefore = rm.getAccumulatedFees();
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}();
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
 
         assertEq(rm.getAccumulatedFees(), feesBefore + PREMIUM_FEE);
     }
@@ -674,7 +700,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerAliceFree();
         vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE - 1}();
+        rm.renewSubscription{value: PREMIUM_FEE - 1}(IAeternumVault.SubscriptionPlan.Monthly);
     }
 
     function test_renewSubscription_whenExpired_startsFresh() public {
@@ -685,7 +711,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 expectedExpiry = block.timestamp + 30 days;
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}();
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
 
         // New expiry should start from now, not stack on old expired expiry
         assertEq(rm.getRecoveryConfig(alice).subscriptionExpiry, expectedExpiry);
@@ -820,7 +846,9 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         // Can register again
         vm.prank(alice);
-        rm.register{value: 0.5 ether}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 0.5 ether}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
         assertTrue(rm.getRecoveryConfig(alice).isActive);
     }
 
@@ -832,7 +860,9 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_cancelRecovery_withZeroBalance_noTransfer() public {
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 0}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
         uint256 ethBefore = alice.balance;
 
         vm.prank(alice);
@@ -892,7 +922,9 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_checkUpkeep_returnsFalseIfBalanceZero() public {
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 0}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
         _warpPastInactivity(alice);
 
         (bool needed,) = rm.checkUpkeep(bytes(""));
@@ -904,7 +936,9 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         _warpPastInactivity(bob);
 
@@ -924,7 +958,9 @@ contract AeternumVaultTest is StdInvariant, Test {
             address backup = address(uint160(0xDEAD + i));
             deal(user, 2 ether);
             vm.prank(user);
-            rm.register{value: 1 ether}(backup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+            rm.register{value: 1 ether}(
+                backup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+            );
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -994,7 +1030,12 @@ contract AeternumVaultTest is StdInvariant, Test {
         RejectingReceiver badBackup = new RejectingReceiver();
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         _warpPastInactivity(alice);
 
@@ -1010,7 +1051,12 @@ contract AeternumVaultTest is StdInvariant, Test {
         RejectingReceiver badBackup = new RejectingReceiver();
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         _warpPastInactivity(alice);
 
@@ -1029,10 +1075,17 @@ contract AeternumVaultTest is StdInvariant, Test {
         RejectingReceiver badBackup = new RejectingReceiver();
 
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
 
@@ -1117,7 +1170,9 @@ contract AeternumVaultTest is StdInvariant, Test {
         // but a stale or manually crafted performData might. _executeRecovery must
         // handle it gracefully via the balance == 0 guard.
         vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 0}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         _warpPastInactivity(alice);
 
@@ -1150,7 +1205,9 @@ contract AeternumVaultTest is StdInvariant, Test {
         for (uint256 i = 0; i < 3; i++) {
             deal(users[i], 2 ether);
             vm.prank(users[i]);
-            rm.register{value: DEPOSIT_1_ETH}(backups[i], FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+            rm.register{value: DEPOSIT_1_ETH}(
+                backups[i], FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+            );
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -1173,7 +1230,12 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_executeRecovery_incrementsFailedAttempts() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
         _warpPastInactivity(alice);
 
         (, bytes memory performData) = rm.checkUpkeep(bytes(""));
@@ -1185,7 +1247,12 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_executeRecovery_emitsRecoveryAbandoned() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS() - 1; i++) {
             _warpPastInactivity(alice);
@@ -1205,7 +1272,12 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_executeRecovery_abandonedAfterMaxAttempts() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1225,7 +1297,12 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_abandonedWallet_canWithdrawAll() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1244,7 +1321,12 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_abandonedWallet_canSend() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1262,7 +1344,12 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_abandonedWallet_canUpdateBackupAddress() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1280,7 +1367,12 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_abandonedWallet_cannotReRegister() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1290,13 +1382,20 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function test_abandonedWallet_checkUpkeepSkipsIt() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
@@ -1431,7 +1530,9 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_getRegisteredWallets_pagination() public {
         _registerAliceFree();
         vm.prank(bob);
-        rm.register{value: 0}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 0}(
+            bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         address[] memory page = rm.getRegisteredWallets(0, 2);
         assertEq(page.length, 2);
@@ -1475,10 +1576,14 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(bob);
-        rm.register{value: 1 ether}(bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 1 ether}(
+            bobBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         vm.prank(carol);
-        rm.register{value: 1 ether}(carolBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 1 ether}(
+            carolBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         vm.prank(alice);
         rm.cancelRecovery(); // triggers swap-and-pop
@@ -1496,7 +1601,9 @@ contract AeternumVaultTest is StdInvariant, Test {
         for (uint256 i = 0; i < 3; i++) {
             deal(users[i], 2 ether);
             vm.prank(users[i]);
-            rm.register{value: 1 ether}(backups[i], FREE_PERIOD, IAeternumVault.SubscriptionTier.Free);
+            rm.register{value: 1 ether}(
+                backups[i], FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+            );
         }
 
         vm.warp(block.timestamp + FREE_PERIOD + 1);
@@ -1515,7 +1622,9 @@ contract AeternumVaultTest is StdInvariant, Test {
         period = bound(period, FREE_PERIOD, rm.MAX_INACTIVITY_PERIOD());
 
         vm.prank(alice);
-        rm.register{value: 1 ether}(aliceBackup, period, IAeternumVault.SubscriptionTier.Free);
+        rm.register{value: 1 ether}(
+            aliceBackup, period, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
 
         assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, period);
     }

@@ -14,7 +14,9 @@ contract RejectingCallerMock {
     }
 
     function doRegister(address backup, uint256 period) external payable {
-        vault.register{value: msg.value}(backup, period, IAeternumVault.SubscriptionTier.Free);
+        vault.register{value: msg.value}(
+            backup, period, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     function doWithdrawAll() external {

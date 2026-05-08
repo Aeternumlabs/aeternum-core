@@ -105,7 +105,10 @@ contract AeternumVaultEchidna {
         (address actor, address backup) = _toActor(actorSeed);
         if (_isRegistered(actor)) return;
 
-        try vault.register{value: 1 ether}(backup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free) {} catch {}
+        try vault.register{value: 1 ether}(
+            backup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        ) {}
+            catch {}
     }
 
     /**
@@ -117,7 +120,9 @@ contract AeternumVaultEchidna {
 
         uint256 fee = vault.PREMIUM_MONTHLY_FEE();
 
-        try vault.register{value: 1 ether + fee}(backup, PREMIUM_PERIOD, IAeternumVault.SubscriptionTier.Premium) {}
+        try vault.register{value: 1 ether + fee}(
+            backup, PREMIUM_PERIOD, IAeternumVault.SubscriptionTier.Premium, IAeternumVault.SubscriptionPlan.Monthly
+        ) {}
             catch {}
     }
 
@@ -204,7 +209,7 @@ contract AeternumVaultEchidna {
 
         uint256 fee = vault.PREMIUM_MONTHLY_FEE();
 
-        try vault.renewSubscription{value: fee}() {} catch {}
+        try vault.renewSubscription{value: fee}(IAeternumVault.SubscriptionPlan.Monthly) {} catch {}
     }
 
     /**
