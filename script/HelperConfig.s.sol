@@ -24,6 +24,7 @@ contract HelperConfig is Script {
         uint256 maxInactivityPeriod;
         uint256 subscriptionDuration;
         uint256 premiumMonthlyFee;
+        uint256 premiumAnnualFee;
         uint256 maxBatchSize;
         uint8 maxRecoveryAttempts;
     }
@@ -61,7 +62,8 @@ contract HelperConfig is Script {
         console2.log("MIN_FREE (seconds):   ", activeConfig.minInactivityFree);
         console2.log("MIN_PREMIUM (seconds):", activeConfig.minInactivityPremium);
         console2.log("SUB_DURATION (secs):  ", activeConfig.subscriptionDuration);
-        console2.log("PREMIUM_FEE (wei):    ", activeConfig.premiumMonthlyFee);
+        console2.log("PREMIUM_FEE MONTHLY(wei):    ", activeConfig.premiumMonthlyFee);
+        console2.log("PREMIUM_FEE ANNUAL(wei):    ", activeConfig.premiumAnnualFee);
         console2.log("MAX_BATCH_SIZE:       ", activeConfig.maxBatchSize);
         console2.log("MAX_RECOVERY_ATTEMPTS:", activeConfig.maxRecoveryAttempts);
     }
@@ -76,12 +78,13 @@ contract HelperConfig is Script {
      */
     function _getMainnetConfig() internal pure returns (VaultConfig memory) {
         return VaultConfig({
-            treasury: 0x0000000000000000000000000000000000000001, // TODO: replace with mainnet multisig
+            treasury: 0x0000000000000000000000000000000000000001, // Replace with mainnet multisig
             minInactivityFree: 365 days,
             minInactivityPremium: 180 days,
             maxInactivityPeriod: 3650 days,
             subscriptionDuration: 30 days,
             premiumMonthlyFee: 0.002 ether,
+            premiumAnnualFee: 0.02 ether,
             maxBatchSize: 50,
             maxRecoveryAttempts: 3
         });
@@ -100,6 +103,7 @@ contract HelperConfig is Script {
             maxInactivityPeriod: 30 minutes,
             subscriptionDuration: 2.5 minutes,
             premiumMonthlyFee: 0.002 ether,
+            premiumAnnualFee: 0.02 ether,
             maxBatchSize: 50,
             maxRecoveryAttempts: 3
         });
@@ -119,6 +123,7 @@ contract HelperConfig is Script {
             maxInactivityPeriod: 30 minutes,
             subscriptionDuration: 1 minutes,
             premiumMonthlyFee: 0.002 ether,
+            premiumAnnualFee: 0.02 ether,
             maxBatchSize: 50,
             maxRecoveryAttempts: 3
         });
