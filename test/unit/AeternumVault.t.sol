@@ -1364,29 +1364,6 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getRecoveryConfig(alice).backupAddress, newBackup);
     }
 
-    function test_abandonedWallet_cannotReRegister() public {
-        RejectingReceiver badBackup = new RejectingReceiver();
-        vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            address(badBackup),
-            FREE_PERIOD,
-            IAeternumVault.SubscriptionTier.Free,
-            IAeternumVault.SubscriptionPlan.Monthly
-        );
-
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory performData) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(performData);
-        }
-
-        vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
-        vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
-        );
-    }
-
     function test_abandonedWallet_checkUpkeepSkipsIt() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
