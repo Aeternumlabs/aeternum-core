@@ -103,6 +103,12 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     mapping(address => uint256) private s_walletIndexPlusOne;
 
+    /**
+     * @dev Backup addresses that have been proven to reject ETH after MAX_RECOVERY_ATTEMPTS.
+     *      Any registration or backup update pointing to these addresses is permanently blocked.
+     */
+    mapping(address => bool) private s_abandonedBackupAddresses;
+
     /// @dev Running total of subscription fees not yet withdrawn by treasury.
     uint256 private s_accumulatedFees;
 
@@ -195,7 +201,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     {
         // Checks
         if (s_configs[msg.sender].isActive) revert AeternumVault__AlreadyRegistered();
-        if (s_configs[msg.sender].isAbandoned) revert AeternumVault__WalletAbandoned();
+        if (s_abandonedBackupAddresses[backupAddress]) revert AeternumVault__WalletAbandoned();
         if (backupAddress == address(0) || backupAddress == msg.sender) {
             revert AeternumVault__InvalidBackupAddress();
         }
@@ -344,6 +350,10 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     function updateBackupAddress(address newBackupAddress) external onlyRegistered {
         if (newBackupAddress == address(0) || newBackupAddress == msg.sender) {
             revert AeternumVault__InvalidBackupAddress();
+        }
+
+        if (s_abandonedBackupAddresses[newBackupAddress]) {
+            revert AeternumVault__WalletAbandoned();
         }
 
         s_configs[msg.sender].backupAddress = newBackupAddress;
@@ -645,9 +655,10 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         return deadline - block.timestamp;
     }
 
-    /// @notice Returns the total number of wallets currently registered.
-    function getTotalRegistered() external view returns (uint256) {
-        return s_registeredWallets.length;
+    /// @notice Returns true if a backup address has been permanently blocked
+    ///         due to rejecting ETH across MAX_RECOVERY_ATTEMPTS recoveries.
+    function isBackupAbandoned(address backup) external view returns (bool) {
+        return s_abandonedBackupAddresses[backup];
     }
 
     /// @notice Returns the total subscription fees not yet withdrawn.
@@ -678,6 +689,11 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
             }
         }
         return result;
+    }
+
+    /// @notice Returns the total number of wallets currently registered.
+    function getTotalRegistered() external view returns (uint256) {
+        return s_registeredWallets.length;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -771,6 +787,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
             if (newAttempts >= MAX_RECOVERY_ATTEMPTS) {
                 config.isAbandoned = true;
+                s_abandonedBackupAddresses[backupAddress] = true;
                 emit RecoveryAbandoned(wallet, backupAddress, amount);
                 return;
             }
