@@ -22,6 +22,12 @@ interface IAeternumVault {
         Premium
     }
 
+    /// @notice Subscription payment plan options for Premium tier.
+    enum SubscriptionPlan {
+        Monthly, // Pay PREMIUM_MONTHLY_FEE for SUBSCRIPTION_DURATION
+        Annual // Pay PREMIUM_ANNUAL_FEE for 12x SUBSCRIPTION_DURATION (discounted)
+    }
+
     /*//////////////////////////////////////////////////////////////
                                 STRUCTS
     //////////////////////////////////////////////////////////////*/
