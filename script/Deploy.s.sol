@@ -51,7 +51,8 @@ contract Deploy is Script {
         console2.log("MIN_PREMIUM (seconds):", cfg.minInactivityPremium);
         console2.log("MAX_PERIOD (seconds): ", cfg.maxInactivityPeriod);
         console2.log("SUB_DURATION (secs):  ", cfg.subscriptionDuration);
-        console2.log("PREMIUM_FEE (wei):    ", cfg.premiumMonthlyFee);
+        console2.log("PREMIUM_FEE_MONTHLY (wei):    ", cfg.premiumMonthlyFee);
+        console2.log("PREMIUM_FEE_ANNUAL (wei):    ", cfg.premiumAnnualFee);
         console2.log("MAX_BATCH_SIZE:       ", cfg.maxBatchSize);
         console2.log("MAX_RECOVERY_ATTEMPTS:", cfg.maxRecoveryAttempts);
 
@@ -64,6 +65,7 @@ contract Deploy is Script {
             cfg.maxInactivityPeriod,
             cfg.subscriptionDuration,
             cfg.premiumMonthlyFee,
+            cfg.premiumAnnualFee,
             cfg.maxBatchSize,
             cfg.maxRecoveryAttempts
         );
@@ -85,7 +87,8 @@ contract Deploy is Script {
         console2.log("Accumulated fees:     ", rm.getAccumulatedFees());
         console2.log("MAX_BATCH_SIZE:       ", rm.MAX_BATCH_SIZE());
         console2.log("MAX_RECOVERY_ATTEMPTS:", rm.MAX_RECOVERY_ATTEMPTS());
-        console2.log("PREMIUM_FEE (wei):    ", rm.PREMIUM_MONTHLY_FEE());
+        console2.log("PREMIUM_FEE_MONTHLY (wei):    ", rm.PREMIUM_MONTHLY_FEE());
+        console2.log("PREMIUM_FEE_ANNUAL (wei):    ", rm.PREMIUM_ANNUAL_FEE());
         console2.log("MIN_FREE (seconds):   ", rm.MIN_INACTIVITY_PERIOD_FREE());
         console2.log("MIN_PREMIUM (seconds):", rm.MIN_INACTIVITY_PERIOD_PREMIUM());
         console2.log("MAX_PERIOD (seconds):    ", rm.MAX_INACTIVITY_PERIOD());
@@ -98,6 +101,7 @@ contract Deploy is Script {
         require(rm.MAX_INACTIVITY_PERIOD() == cfg.maxInactivityPeriod, "Deploy: maxInactivityPeriod mismatch");
         require(rm.SUBSCRIPTION_DURATION() == cfg.subscriptionDuration, "Deploy: subscriptionDuration mismatch");
         require(rm.PREMIUM_MONTHLY_FEE() == cfg.premiumMonthlyFee, "Deploy: premiumMonthlyFee mismatch");
+        require(rm.PREMIUM_ANNUAL_FEE() == cfg.premiumAnnualFee, "Deploy: premiumAnnualFee mismatch");
         require(rm.MAX_BATCH_SIZE() == cfg.maxBatchSize, "Deploy: maxBatchSize mismatch");
         require(rm.MAX_RECOVERY_ATTEMPTS() == cfg.maxRecoveryAttempts, "Deploy: maxRecoveryAttempts mismatch");
         require(rm.getTotalRegistered() == 0, "Deploy: unexpected registrations");

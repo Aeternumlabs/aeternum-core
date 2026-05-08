@@ -62,8 +62,8 @@ contract HelperConfig is Script {
         console2.log("MIN_FREE (seconds):   ", activeConfig.minInactivityFree);
         console2.log("MIN_PREMIUM (seconds):", activeConfig.minInactivityPremium);
         console2.log("SUB_DURATION (secs):  ", activeConfig.subscriptionDuration);
-        console2.log("PREMIUM_FEE MONTHLY(wei):    ", activeConfig.premiumMonthlyFee);
-        console2.log("PREMIUM_FEE ANNUAL(wei):    ", activeConfig.premiumAnnualFee);
+        console2.log("PREMIUM_FEE_MONTHLY (wei):    ", activeConfig.premiumMonthlyFee);
+        console2.log("PREMIUM_FEE_ANNUAL (wei):    ", activeConfig.premiumAnnualFee);
         console2.log("MAX_BATCH_SIZE:       ", activeConfig.maxBatchSize);
         console2.log("MAX_RECOVERY_ATTEMPTS:", activeConfig.maxRecoveryAttempts);
     }
