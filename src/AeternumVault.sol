@@ -200,7 +200,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *                         Premium: [MIN_INACTIVITY_PERIOD_PREMIUM, MAX_INACTIVITY_PERIOD]
      * @param tier             Desired subscription tier. Premium requires msg.value ≥ PREMIUM_MONTHLY_FEE.
      */
-    function register(address backupAddress, uint256 inactivityPeriod, SubscriptionTier tier)
+    function register(address backupAddress, uint256 inactivityPeriod, SubscriptionTier tier, SubscriptionPlan plan)
         external
         payable
         nonReentrant
@@ -219,14 +219,20 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 subscriptionExpiry = 0;
 
         if (tier == SubscriptionTier.Premium) {
-            if (msg.value < PREMIUM_MONTHLY_FEE) revert AeternumVault__InsufficientSubscriptionFee();
+            if (plan == SubscriptionPlan.Annual) {
+                if (msg.value < PREMIUM_ANNUAL_FEE) revert AeternumVault__InsufficientSubscriptionFee();
+                subscriptionPayment = PREMIUM_ANNUAL_FEE;
+                subscriptionExpiry = block.timestamp + (12 * SUBSCRIPTION_DURATION);
+            } else {
+                // Monthly (default)
+                if (msg.value < PREMIUM_MONTHLY_FEE) revert AeternumVault__InsufficientSubscriptionFee();
+                subscriptionPayment = PREMIUM_MONTHLY_FEE;
+                subscriptionExpiry = block.timestamp + SUBSCRIPTION_DURATION;
+            }
             if (inactivityPeriod < MIN_INACTIVITY_PERIOD_PREMIUM) {
                 revert AeternumVault__InvalidInactivityPeriod();
             }
-            subscriptionPayment = PREMIUM_MONTHLY_FEE;
-            subscriptionExpiry = block.timestamp + SUBSCRIPTION_DURATION;
         } else {
-            // Free tier
             if (inactivityPeriod < MIN_INACTIVITY_PERIOD_FREE) {
                 revert AeternumVault__InvalidInactivityPeriod();
             }
@@ -407,15 +413,18 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *         amount sent).
      *         Emits {SubscriptionRenewed} and {ActivityPinged}.
      */
-    function renewSubscription() external payable onlyRegistered nonReentrant {
-        // Check
-        if (msg.value < PREMIUM_MONTHLY_FEE) revert AeternumVault__InsufficientSubscriptionFee();
+    function renewSubscription(SubscriptionPlan plan) external payable onlyRegistered nonReentrant {
+        uint256 requiredFee = (plan == SubscriptionPlan.Annual) ? PREMIUM_ANNUAL_FEE : PREMIUM_MONTHLY_FEE;
+
+        uint256 duration = (plan == SubscriptionPlan.Annual) ? 12 * SUBSCRIPTION_DURATION : SUBSCRIPTION_DURATION;
+
+        if (msg.value < requiredFee) revert AeternumVault__InsufficientSubscriptionFee();
 
         RecoveryConfig storage config = s_configs[msg.sender];
 
-        // Stack onto existing expiry or start fresh from now
         uint256 base = (config.subscriptionExpiry > block.timestamp) ? config.subscriptionExpiry : block.timestamp;
-        uint256 newExpiry = base + SUBSCRIPTION_DURATION;
+
+        uint256 newExpiry = base + duration;
 
         // Effects
         config.tier = SubscriptionTier.Premium;
