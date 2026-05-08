@@ -267,16 +267,16 @@ forge script script/Deploy.s.sol \
   --verify \
   -vvvv
 
-# Dry run — Base Mainnet
+# Dry run — Mainnet
 forge script script/Deploy.s.sol \
-  --rpc-url $BASE_MAINNET_RPC_URL \
+  --rpc-url $MAINNET_RPC_URL \
   -vvvv
 
-# Live deploy + Basescan verification — Base Mainnet
+# Live deploy + Etherscan verification — Mainnet
 forge script script/Deploy.s.sol \
   --account private-key \
-  --rpc-url $BASE_MAINNET_RPC_URL \
-  --basescan-api-key $BASESCAN_API_KEY \
+  --rpc-url $MAINNET_RPC_URL \
+  --etherscan-api-key $ETHERSCAN_API_KEY \
   --broadcast \
   --verify \
   -vvvv
