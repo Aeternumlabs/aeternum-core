@@ -164,7 +164,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         if (minInactivityFree_ < minInactivityPremium_) revert AeternumVault__InvalidInactivityPeriod();
         if (maxInactivityPeriod_ < minInactivityFree_) revert AeternumVault__InvalidInactivityPeriod();
         if (subscriptionDuration_ == 0) revert AeternumVault__InvalidSubscriptionDuration();
-        if (premiumAnnualFee_ < premiumMonthlyFee_) revert AeternumVault__InvalidConstructorParam();
+        if (premiumAnnualFee_ < premiumMonthlyFee_) revert AeternumVault__InvalidPremiumPayment();
         if (maxBatchSize_ == 0) revert AeternumVault__MaxBatchSizeExceeded();
         if (maxRecoveryAttempts_ == 0) revert AeternumVault__MaxRecoveryAttemptsExceeded();
 

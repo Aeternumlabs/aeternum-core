@@ -114,6 +114,7 @@ interface IAeternumVault {
     error AeternumVault__ZeroAddress();
     error AeternumVault__InvalidInactivityPeriod();
     error AeternumVault__InvalidSubscriptionDuration();
+    error AeternumVault__InvalidPremiumPayment();
     error AeternumVault__MaxBatchSizeExceeded();
     error AeternumVault__MaxRecoveryAttemptsExceeded();
     error AeternumVault__TransferFailed();
