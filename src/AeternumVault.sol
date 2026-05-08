@@ -67,6 +67,9 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     /// @notice Duration of a Premium subscription.
     uint256 public immutable SUBSCRIPTION_DURATION;
 
+    /// @notice Fee (in wei) for a full annual Premium subscription (discounted vs monthly).
+    uint256 public immutable PREMIUM_ANNUAL_FEE;
+
     /**
      * @notice Monthly fee (in wei) required to register or renew a Premium subscription.
      * @dev    Intentionally kept low for accessibility. Can be adjusted in a future
@@ -152,6 +155,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 maxInactivityPeriod_,
         uint256 subscriptionDuration_,
         uint256 premiumMonthlyFee_,
+        uint256 premiumAnnualFee_,
         uint256 maxBatchSize_,
         uint8 maxRecoveryAttempts_
     ) {
@@ -160,6 +164,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         if (minInactivityFree_ < minInactivityPremium_) revert AeternumVault__InvalidInactivityPeriod();
         if (maxInactivityPeriod_ < minInactivityFree_) revert AeternumVault__InvalidInactivityPeriod();
         if (subscriptionDuration_ == 0) revert AeternumVault__InvalidSubscriptionDuration();
+        if (premiumAnnualFee_ < premiumMonthlyFee_) revert AeternumVault__InvalidConstructorParam();
         if (maxBatchSize_ == 0) revert AeternumVault__MaxBatchSizeExceeded();
         if (maxRecoveryAttempts_ == 0) revert AeternumVault__MaxRecoveryAttemptsExceeded();
 
@@ -169,6 +174,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         MAX_INACTIVITY_PERIOD = maxInactivityPeriod_;
         SUBSCRIPTION_DURATION = subscriptionDuration_;
         PREMIUM_MONTHLY_FEE = premiumMonthlyFee_;
+        PREMIUM_ANNUAL_FEE = premiumAnnualFee_;
         MAX_BATCH_SIZE = maxBatchSize_;
         MAX_RECOVERY_ATTEMPTS = maxRecoveryAttempts_;
     }
