@@ -611,6 +611,24 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.updateInactivityPeriod(invalidPeriod);
     }
 
+    function test_expiredPremium_effectivePeriodReverts_toFreeMinimum() public {
+        _registerAlicePremium(); // inactivityPeriod = PREMIUM_PERIOD (180 days)
+
+        // Expire the subscription
+        vm.warp(block.timestamp + rm.SUBSCRIPTION_DURATION() + 1);
+
+        // Recovery should NOT be due at 200 days — effective period is now FREE (365 days)
+        vm.warp(block.timestamp + 200 days);
+        assertFalse(rm.isRecoveryDue(alice));
+
+        // Recovery SHOULD be due at 365+ days from lastActivity
+        _warpPastInactivity(alice); // warps to lastActivity + FREE_PERIOD + 1
+        // But lastActivity is still the registration time, so we need to warp enough
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        vm.warp(cfg.lastActivity + rm.MIN_INACTIVITY_PERIOD_FREE() + 1);
+        assertTrue(rm.isRecoveryDue(alice));
+    }
+
     /*//////////////////////////////////////////////////////////////
                     8. SUBSCRIPTION RENEWAL
     //////////////////////////////////////////////////////////////*/
