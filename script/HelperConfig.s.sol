@@ -32,7 +32,7 @@ contract HelperConfig is Script {
                           CHAIN IDs
     //////////////////////////////////////////////////////////////*/
 
-    uint256 public constant BASE_MAINNET_CHAIN_ID = 8453;
+    uint256 public constant MAINNET_CHAIN_ID = 1;
     uint256 public constant SEPOLIA_CHAIN_ID = 11155111;
     uint256 public constant ANVIL_CHAIN_ID = 31337;
 
@@ -47,7 +47,7 @@ contract HelperConfig is Script {
     //////////////////////////////////////////////////////////////*/
 
     constructor() {
-        if (block.chainid == BASE_MAINNET_CHAIN_ID) {
+        if (block.chainid == MAINNET_CHAIN_ID) {
             activeConfig = _getMainnetConfig();
         } else if (block.chainid == SEPOLIA_CHAIN_ID) {
             activeConfig = _getSepoliaConfig();

@@ -26,7 +26,7 @@ import {HelperConfig} from "./HelperConfig.s.sol";
  *     -vvvv
  *
  *   # Mainnet (ALWAYS dry-run first, before broadcasting)
- *   forge script script/Deploy.s.sol --rpc-url $BASE_MAINNET_RPC_URL -vvvv
+ *   forge script script/Deploy.s.sol --rpc-url $MAINNET_RPC_URL -vvvv
  */
 contract Deploy is Script {
     /*//////////////////////////////////////////////////////////////
