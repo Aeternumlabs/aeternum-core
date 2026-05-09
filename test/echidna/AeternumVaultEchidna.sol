@@ -71,8 +71,10 @@ contract AeternumVaultEchidna {
             30 days, // SUBSCRIPTION_DURATION
             0.002 ether, // PREMIUM_MONTHLY_FEE
             0.02 ether, // PREMIUM_ANNUAL_FEE
-            50, // MAX_BATCH_SIZE
-            3 // MAX_RECOVERY_ATTEMPTS
+            5000, // MAX_CHECK_UPKEEP_SIZE
+            50, // MAX_PERFORM_UPKEEP_SIZE
+            3, // MAX_RECOVERY_ATTEMPTS
+            1 hours // CURSOR_ADVANCE_INTERVAL
         );
     }
 
