@@ -602,7 +602,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
             // nextCursor == cursor signals performUpkeep NOT to update the advance
             // timestamp. The window is re-scanned next call until fully cleared.
             assembly { mstore(candidates, count) }
-            return (true, abi.encode(candidates, cursor));
+            return (true, abi.encode(candidates, cursor, false));
         }
 
         // Window clear: attempt cursor advancement
@@ -612,7 +612,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         if (block.timestamp >= s_lastCursorAdvance + CURSOR_ADVANCE_INTERVAL) {
             // Interval elapsed — advance cursor to next window
             address[] memory empty = new address[](0);
-            return (true, abi.encode(empty, nextCursor));
+            return (true, abi.encode(empty, nextCursor, true));
         }
 
         // Interval not yet elapsed — nothing to do
@@ -647,26 +647,20 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         override(IAeternumVault, AutomationCompatibleInterface)
         nonReentrant
     {
-        (address[] memory walletsToRecover, uint256 nextCursor) = abi.decode(performData, (address[], uint256));
+        (address[] memory walletsToRecover, uint256 nextCursor, bool isIdleAdvance) =
+            abi.decode(performData, (address[], uint256, bool));
 
         uint256 length = walletsToRecover.length;
-
-        // Guard against oversized crafted performData
         if (length > MAX_PERFORM_UPKEEP_SIZE) revert AeternumVault__MaxPerformUpkeepSizeExceeded();
 
-        uint256 currentCursor = s_checkCursor;
-
-        // Always update cursor position
         s_checkCursor = nextCursor;
 
-        // Only reset advance timestamp when cursor actually moves forward.
-        // When cursor holds (recovery pass), timestamp is left unchanged so the
-        // idle interval timer continues running correctly in the background.
-        if (nextCursor != currentCursor) {
+        // Update timestamp only when this is an explicit idle advance tick,
+        // not during recovery passes (where cursor holds position).
+        if (isIdleAdvance) {
             s_lastCursorAdvance = block.timestamp;
         }
 
-        // Execute recoveries — each individually re-validated (stale data safety)
         for (uint256 i = 0; i < length;) {
             _executeRecovery(walletsToRecover[i]);
             unchecked {

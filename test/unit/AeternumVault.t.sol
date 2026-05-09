@@ -244,26 +244,9 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     function test_constructor_revertsIfMaxRecoveryAttemptsIsZero() public {
-        vm.expectRevert(IAeternumVault.AeternumVault__InvalidConstructorParam.selector);
-        new AeternumVault(
-            treasury,
-            365 days,
-            180 days,
-            3650 days,
-            30 days,
-            0.002 ether,
-            0.02 ether,
-            5000,
-            50,
-            0, // ← maxRecoveryAttempts = 0, should revert
-            1 hours
-        );
-    }
-
-    function test_constructor_revertsIfMaxRecoveryAttemptsIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__MaxRecoveryAttemptsExceeded.selector);
         new AeternumVault(
-            treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours
+            treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 0, 1 hours
         );
     }
 
