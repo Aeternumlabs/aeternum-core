@@ -64,26 +64,45 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     /// @notice Hard ceiling on any inactivity period (prevents permanent lock-up).
     uint256 public immutable MAX_INACTIVITY_PERIOD;
 
-    /// @notice Duration of a Premium subscription.
+    /// @notice Duration of a Premium subscription period.
     uint256 public immutable SUBSCRIPTION_DURATION;
 
-    /// @notice Fee (in wei) for a full annual Premium subscription (discounted vs monthly).
+    /// @notice Monthly fee (in wei) required to register or renew a Premium subscription.
+    uint256 public immutable PREMIUM_MONTHLY_FEE;
+
+    /// @notice Annual fee (in wei) for a full-year Premium subscription (discounted).
     uint256 public immutable PREMIUM_ANNUAL_FEE;
 
     /**
-     * @notice Monthly fee (in wei) required to register or renew a Premium subscription.
-     * @dev    Intentionally kept low for accessibility. Can be adjusted in a future
-     *         version via governance or an upgradeable proxy pattern.
+     * @notice Maximum wallets scanned per `checkUpkeep` call (off-chain simulation).
+     * @dev    Runs entirely off-chain in Chainlink's simulation environment.
+     *         No block gas limit constraint. Set high (e.g. 5000) for wide registry
+     *         coverage per tick. Chainlink's simulation gas limit (~6.5M) comfortably
+     *         supports 5000 × ~800 gas (SLOAD per wallet) = ~4M gas.
      */
-    uint256 public immutable PREMIUM_MONTHLY_FEE;
+    uint256 public immutable MAX_CHECK_UPKEEP_SIZE;
 
-    /// @notice Maximum wallets processed in a single `performUpkeep` call.
-    /// @dev    Keeps on-chain gas consumption predictable and within Chainlink limits.
-    uint256 public immutable MAX_BATCH_SIZE;
+    /**
+     * @notice Maximum wallets recovered per `performUpkeep` call (on-chain execution).
+     * @dev    Subject to Ethereum block gas limit. Each `_executeRecovery` worst-case
+     *         consumes ~100k gas (SSTOREs + external ETH call + events + retry logic).
+     *         At 50 wallets: ~5M gas — safe headroom under the 30M block gas limit.
+     *         Keep this at 50 for mainnet. L2 deployments can raise it.
+     */
+    uint256 public immutable MAX_PERFORM_UPKEEP_SIZE;
 
-    /// @notice Maximum consecutive failed recovery attempts before a wallet is
-    ///         permanently deregistered and its balance becomes self-claimable.
+    /// @notice Maximum consecutive failed recovery attempts before a wallet is abandoned.
     uint8 public immutable MAX_RECOVERY_ATTEMPTS;
+
+    /**
+     * @notice Minimum seconds between cursor advances when no wallets are due.
+     * @dev    Controls how frequently idle windows advance to cover the full registry.
+     *         Mainnet: 1 hour  → 24 on-chain calls/day (affordable).
+     *         Sepolia/Anvil: 30 seconds → fast iteration for testing.
+     *         Immutable by design — tune per network at deploy time.
+     *         Phase 2 multichain deployments will use chain-appropriate values.
+     */
+    uint256 public immutable CURSOR_ADVANCE_INTERVAL;
 
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
