@@ -140,6 +140,21 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     address private s_treasury;
 
+    /**
+     * @dev Rolling scan cursor. Tracks which registry index the next `checkUpkeep`
+     *      scan window begins from. Advanced by `performUpkeep` when a window is clear.
+     *      Wraps to 0 when the end of the registry is reached.
+     */
+    uint256 private s_checkCursor;
+
+    /**
+     * @dev Timestamp of the last cursor advancement (idle case only).
+     *      Updated by `performUpkeep` when `nextCursor != currentCursor`.
+     *      NOT updated during recovery passes (cursor holds position).
+     *      Gates idle advancement via CURSOR_ADVANCE_INTERVAL.
+     */
+    uint256 private s_lastCursorAdvance;
+
     /*//////////////////////////////////////////////////////////////
                                MODIFIERS
     //////////////////////////////////////////////////////////////*/
