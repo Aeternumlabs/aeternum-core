@@ -54,7 +54,7 @@ contract HelperConfig is Script {
     //////////////////////////////////////////////////////////////*/
 
     constructor() {
-        if (block.chainid == ETH_MAINNET_CHAIN_ID) {
+        if (block.chainid == MAINNET_CHAIN_ID) {
             activeConfig = _getMainnetConfig();
         } else if (block.chainid == SEPOLIA_CHAIN_ID) {
             activeConfig = _getSepoliaConfig();
