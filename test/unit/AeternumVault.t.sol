@@ -193,7 +193,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_constructor_revertsOnZeroTreasury() public {
         vm.expectRevert(IAeternumVault.AeternumVault__ZeroAddress.selector);
         new AeternumVault(
-            address(0), 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 100, 10, 3, 30 seconds
+            address(0), 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours
         );
     }
 
@@ -204,34 +204,34 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_constructor_revertsIfPremiumMinIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
-        new AeternumVault(treasury, 365 days, 0, 3650 days, 30 days, 0.002 ether, 0.02 ether, 50, 3);
+        new AeternumVault(treasury, 365 days, 0, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours);
     }
 
     function test_constructor_revertsIfFreeMinLessThanPremiumMin() public {
         // Free min (100 days) < Premium min (200 days) — violates ordering invariant
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
-        new AeternumVault(treasury, 100 days, 200 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 50, 3);
+        new AeternumVault(treasury, 100 days, 200 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours);
     }
 
     function test_constructor_revertsIfMaxLessThanFreeMin() public {
         // Max (300 days) < Free min (365 days)
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
-        new AeternumVault(treasury, 365 days, 180 days, 300 days, 30 days, 0.002 ether, 0.02 ether, 50, 3);
+        new AeternumVault(treasury, 365 days, 180 days, 300 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours);
     }
 
     function test_constructor_revertsIfSubscriptionDurationIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidSubscriptionDuration.selector);
-        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 0, 0.002 ether, 0.02 ether, 50, 3);
+        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 0, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours);
     }
 
     function test_constructor_revertsIfMaxBatchSizeIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__MaxPerformUpkeepSizeExceeded.selector);
-        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 0, 3);
+        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours);
     }
 
     function test_constructor_revertsIfMaxRecoveryAttemptsIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__MaxRecoveryAttemptsExceeded.selector);
-        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 50, 0);
+        new AeternumVault(treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours);
     }
 
     /*//////////////////////////////////////////////////////////////
