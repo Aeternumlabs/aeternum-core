@@ -115,7 +115,7 @@ interface IAeternumVault {
     error AeternumVault__InvalidInactivityPeriod();
     error AeternumVault__InvalidSubscriptionDuration();
     error AeternumVault__InvalidPremiumPayment();
-    error AeternumVault__MaxBatchSizeExceeded();
+    error AeternumVault__MaxPerformUpkeepSizeExceeded();
     error AeternumVault__MaxRecoveryAttemptsExceeded();
     error AeternumVault__TransferFailed();
     error AeternumVault__NotAuthorized();
@@ -151,6 +151,12 @@ interface IAeternumVault {
     function cancelRecovery() external;
 
     // --- Automation ---
+    function MAX_CHECK_UPKEEP_SIZE() external view returns (uint256);
+
+    function MAX_PERFORM_UPKEEP_SIZE() external view returns (uint256);
+
+    function CURSOR_ADVANCE_INTERVAL() external view returns (uint256);
+
     function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData);
 
     function performUpkeep(bytes calldata performData) external;
@@ -176,4 +182,8 @@ interface IAeternumVault {
     function getTreasury() external view returns (address);
 
     function getRegisteredWallets(uint256 start, uint256 end) external view returns (address[] memory);
+
+    function getCheckCursor() external view returns (uint256);
+
+    function getLastCursorAdvance() external view returns (uint256);
 }
