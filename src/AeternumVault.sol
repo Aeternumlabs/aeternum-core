@@ -177,10 +177,20 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice Initialises the contract and sets the treasury address.
-     * @param treasury_ Address that may withdraw accumulated subscription fees.
-     *                  Recommended to be a multi-sig (e.g. Gnosis Safe) in production.
+   /**
+     * @notice Initialises the vault with all immutable configuration.
+     *
+     * @param treasury_               Fee withdrawal address (recommend Gnosis Safe).
+     * @param minInactivityFree_      Minimum inactivity period for Free tier (seconds).
+     * @param minInactivityPremium_   Minimum inactivity period for Premium tier (seconds).
+     * @param maxInactivityPeriod_    Hard ceiling on inactivity period (seconds).
+     * @param subscriptionDuration_   Duration of one subscription period (seconds).
+     * @param premiumMonthlyFee_      Fee in wei for a monthly Premium subscription.
+     * @param premiumAnnualFee_       Fee in wei for an annual Premium subscription.
+     * @param maxCheckUpkeepSize_     Max wallets scanned per checkUpkeep (off-chain).
+     * @param maxPerformUpkeepSize_   Max wallets recovered per performUpkeep (on-chain).
+     * @param maxRecoveryAttempts_    Max failed attempts before a wallet is abandoned.
+     * @param cursorAdvanceInterval_  Seconds between idle cursor advances.
      */
     constructor(
         address treasury_,
@@ -190,28 +200,38 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 subscriptionDuration_,
         uint256 premiumMonthlyFee_,
         uint256 premiumAnnualFee_,
-        uint256 maxBatchSize_,
-        uint8 maxRecoveryAttempts_
+        uint256 maxCheckUpkeepSize_,
+        uint256 maxPerformUpkeepSize_,
+        uint8   maxRecoveryAttempts_,
+        uint256 cursorAdvanceInterval_
     ) {
-        if (treasury_ == address(0)) revert AeternumVault__ZeroAddress();
-        if (minInactivityPremium_ == 0) revert AeternumVault__InvalidInactivityPeriod();
-        if (minInactivityFree_ < minInactivityPremium_) revert AeternumVault__InvalidInactivityPeriod();
-        if (maxInactivityPeriod_ < minInactivityFree_) revert AeternumVault__InvalidInactivityPeriod();
-        if (subscriptionDuration_ == 0) revert AeternumVault__InvalidSubscriptionDuration();
-        if (premiumAnnualFee_ < premiumMonthlyFee_) revert AeternumVault__InvalidPremiumPayment();
-        if (maxBatchSize_ == 0) revert AeternumVault__MaxBatchSizeExceeded();
-        if (maxRecoveryAttempts_ == 0) revert AeternumVault__MaxRecoveryAttemptsExceeded();
+        // Validations
+        if (treasury_ == address(0))                       revert AeternumVault__ZeroAddress();
+        if (minInactivityPremium_ == 0)                    revert AeternumVault__InvalidInactivityPeriod();
+        if (minInactivityFree_ < minInactivityPremium_)    revert AeternumVault__InvalidInactivityPeriod();
+        if (maxInactivityPeriod_ < minInactivityFree_)     revert AeternumVault__InvalidInactivityPeriod();
+        if (subscriptionDuration_ == 0)                    revert AeternumVault__InvalidSubscriptionDuration();
+        if (premiumAnnualFee_ < premiumMonthlyFee_)        revert AeternumVault__InvalidPremiumPayment();
+        if (maxCheckUpkeepSize_ == 0)                      revert AeternumVault__InvalidConstructorParam();
+        if (maxPerformUpkeepSize_ == 0)                    revert AeternumVault__InvalidConstructorParam();
+        if (maxPerformUpkeepSize_ > maxCheckUpkeepSize_)   revert AeternumVault__MaxPerformUpkeepSizeExceeded();
+        if (maxRecoveryAttempts_ == 0)                     revert AeternumVault__MaxRecoveryAttemptsExceeded();
+        if (cursorAdvanceInterval_ == 0)                   revert AeternumVault__InvalidConstructorParam();
 
-        s_treasury = treasury_;
-        MIN_INACTIVITY_PERIOD_FREE = minInactivityFree_;
+        // Assignments
+        s_treasury                = treasury_;
+        MIN_INACTIVITY_PERIOD_FREE    = minInactivityFree_;
         MIN_INACTIVITY_PERIOD_PREMIUM = minInactivityPremium_;
-        MAX_INACTIVITY_PERIOD = maxInactivityPeriod_;
-        SUBSCRIPTION_DURATION = subscriptionDuration_;
-        PREMIUM_MONTHLY_FEE = premiumMonthlyFee_;
-        PREMIUM_ANNUAL_FEE = premiumAnnualFee_;
-        MAX_BATCH_SIZE = maxBatchSize_;
-        MAX_RECOVERY_ATTEMPTS = maxRecoveryAttempts_;
+        MAX_INACTIVITY_PERIOD         = maxInactivityPeriod_;
+        SUBSCRIPTION_DURATION         = subscriptionDuration_;
+        PREMIUM_MONTHLY_FEE           = premiumMonthlyFee_;
+        PREMIUM_ANNUAL_FEE            = premiumAnnualFee_;
+        MAX_CHECK_UPKEEP_SIZE         = maxCheckUpkeepSize_;
+        MAX_PERFORM_UPKEEP_SIZE       = maxPerformUpkeepSize_;
+        MAX_RECOVERY_ATTEMPTS         = maxRecoveryAttempts_;
+        CURSOR_ADVANCE_INTERVAL       = cursorAdvanceInterval_;
     }
+
 
     /*//////////////////////////////////////////////////////////////
                          USER-FACING FUNCTIONS

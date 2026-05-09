@@ -124,6 +124,7 @@ interface IAeternumVault {
     error AeternumVault__InsufficientBalance();
     error AeternumVault__DirectTransferNotAllowed();
     error AeternumVault__WalletAbandoned();
+    error AeternumVault__InvalidConstructorParam();
 
     /*//////////////////////////////////////////////////////////////
                           FUNCTION SIGNATURES
