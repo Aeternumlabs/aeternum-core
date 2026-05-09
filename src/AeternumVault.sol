@@ -418,7 +418,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
         uint256 duration = (plan == SubscriptionPlan.Annual) ? 12 * SUBSCRIPTION_DURATION : SUBSCRIPTION_DURATION;
 
-        if (msg.value < requiredFee) revert AeternumVault__InsufficientSubscriptionFee();
+        if (msg.value != requiredFee) revert AeternumVault__InsufficientSubscriptionFee();
 
         RecoveryConfig storage config = s_configs[msg.sender];
 
@@ -430,7 +430,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         config.tier = SubscriptionTier.Premium;
         config.subscriptionExpiry = newExpiry;
         config.lastActivity = block.timestamp;
-        s_accumulatedFees += msg.value;
+        s_accumulatedFees += requiredFee;
 
         emit SubscriptionRenewed(msg.sender, SubscriptionTier.Premium, newExpiry);
         emit ActivityPinged(msg.sender, block.timestamp);
