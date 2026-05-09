@@ -208,6 +208,9 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         // Checks
         if (s_configs[msg.sender].isActive) revert AeternumVault__AlreadyRegistered();
         if (s_abandonedBackupAddresses[backupAddress]) revert AeternumVault__WalletAbandoned();
+        // If wallet was abandoned and user skipped withdrawAll(), preserve the
+        // existing balance so it isn't permanently locked in the contract.
+        uint256 carriedBalance = s_configs[msg.sender].isAbandoned ? s_configs[msg.sender].balance : 0;
         if (backupAddress == address(0) || backupAddress == msg.sender) {
             revert AeternumVault__InvalidBackupAddress();
         }
@@ -246,7 +249,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
             backupAddress: backupAddress,
             inactivityPeriod: inactivityPeriod,
             lastActivity: block.timestamp,
-            balance: depositAmount,
+            balance: depositAmount + carriedBalance,
             tier: tier,
             subscriptionExpiry: subscriptionExpiry,
             isActive: true,
