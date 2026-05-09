@@ -29,34 +29,29 @@ import {HelperConfig} from "./HelperConfig.s.sol";
  *   forge script script/Deploy.s.sol --rpc-url $MAINNET_RPC_URL -vvvv
  */
 contract Deploy is Script {
-    /*//////////////////////////////////////////////////////////////
-                          ENTRY POINT
-    //////////////////////////////////////////////////////////////*/
-
     function run() external returns (AeternumVault aeternumVault, HelperConfig helperConfig) {
         helperConfig = new HelperConfig();
         HelperConfig.VaultConfig memory cfg = helperConfig.getConfig();
 
-        // Sanity check before spending gas
         require(cfg.treasury != address(0), "Deploy: treasury is zero address");
 
-        // Log pre-deployment info
         console2.log("\n=== AeternumVault Deployment ===");
-        console2.log("Deployer:             ", msg.sender);
-        console2.log("Treasury:             ", cfg.treasury);
-        console2.log("Chain ID:             ", block.chainid);
-        console2.log("Block:                ", block.number);
-        console2.log("Timestamp:            ", block.timestamp);
-        console2.log("MIN_FREE (seconds):   ", cfg.minInactivityFree);
-        console2.log("MIN_PREMIUM (seconds):", cfg.minInactivityPremium);
-        console2.log("MAX_PERIOD (seconds): ", cfg.maxInactivityPeriod);
-        console2.log("SUB_DURATION (secs):  ", cfg.subscriptionDuration);
-        console2.log("PREMIUM_FEE_MONTHLY (wei):    ", cfg.premiumMonthlyFee);
-        console2.log("PREMIUM_FEE_ANNUAL (wei):    ", cfg.premiumAnnualFee);
-        console2.log("MAX_BATCH_SIZE:       ", cfg.maxBatchSize);
-        console2.log("MAX_RECOVERY_ATTEMPTS:", cfg.maxRecoveryAttempts);
+        console2.log("Deployer:                 ", msg.sender);
+        console2.log("Treasury:                 ", cfg.treasury);
+        console2.log("Chain ID:                 ", block.chainid);
+        console2.log("Block:                    ", block.number);
+        console2.log("Timestamp:                ", block.timestamp);
+        console2.log("MIN_FREE (s):             ", cfg.minInactivityFree);
+        console2.log("MIN_PREMIUM (s):          ", cfg.minInactivityPremium);
+        console2.log("MAX_PERIOD (days):        ", cfg.maxInactivityPeriod / 1 days);
+        console2.log("SUB_DURATION (s):         ", cfg.subscriptionDuration);
+        console2.log("PREMIUM_FEE (wei):        ", cfg.premiumMonthlyFee);
+        console2.log("ANNUAL_FEE (wei):         ", cfg.premiumAnnualFee);
+        console2.log("MAX_CHECK_UPKEEP_SIZE:    ", cfg.maxCheckUpkeepSize);
+        console2.log("MAX_PERFORM_UPKEEP_SIZE:  ", cfg.maxPerformUpkeepSize);
+        console2.log("MAX_RECOVERY_ATTEMPTS:    ", cfg.maxRecoveryAttempts);
+        console2.log("CURSOR_ADVANCE_INTERVAL:  ", cfg.cursorAdvanceInterval);
 
-        // ── Deploy ──────────────────────────────────────────────────────────
         vm.startBroadcast();
         aeternumVault = new AeternumVault(
             cfg.treasury,
@@ -66,35 +61,31 @@ contract Deploy is Script {
             cfg.subscriptionDuration,
             cfg.premiumMonthlyFee,
             cfg.premiumAnnualFee,
-            cfg.maxBatchSize,
-            cfg.maxRecoveryAttempts
+            cfg.maxCheckUpkeepSize,
+            cfg.maxPerformUpkeepSize,
+            cfg.maxRecoveryAttempts,
+            cfg.cursorAdvanceInterval
         );
         vm.stopBroadcast();
 
-        // ── Post-deploy verification ─────────────────────────────────────────
         _verifyDeployment(aeternumVault, cfg);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                      POST-DEPLOY CHECKS
-    //////////////////////////////////////////////////////////////*/
-
     function _verifyDeployment(AeternumVault rm, HelperConfig.VaultConfig memory cfg) internal view {
         console2.log("\n=== Post-Deploy Verification ===");
-        console2.log("Contract address:     ", address(rm));
-        console2.log("Treasury:             ", rm.getTreasury());
-        console2.log("Total registered:     ", rm.getTotalRegistered());
-        console2.log("Accumulated fees:     ", rm.getAccumulatedFees());
-        console2.log("MAX_BATCH_SIZE:       ", rm.MAX_BATCH_SIZE());
-        console2.log("MAX_RECOVERY_ATTEMPTS:", rm.MAX_RECOVERY_ATTEMPTS());
-        console2.log("PREMIUM_FEE_MONTHLY (wei):    ", rm.PREMIUM_MONTHLY_FEE());
-        console2.log("PREMIUM_FEE_ANNUAL (wei):    ", rm.PREMIUM_ANNUAL_FEE());
-        console2.log("MIN_FREE (seconds):   ", rm.MIN_INACTIVITY_PERIOD_FREE());
-        console2.log("MIN_PREMIUM (seconds):", rm.MIN_INACTIVITY_PERIOD_PREMIUM());
-        console2.log("MAX_PERIOD (seconds):    ", rm.MAX_INACTIVITY_PERIOD());
-        console2.log("SUB_DURATION (secs):  ", rm.SUBSCRIPTION_DURATION());
+        console2.log("Contract address:         ", address(rm));
+        console2.log("Treasury:                 ", rm.getTreasury());
+        console2.log("Total registered:         ", rm.getTotalRegistered());
+        console2.log("Accumulated fees:         ", rm.getAccumulatedFees());
+        console2.log("MAX_CHECK_UPKEEP_SIZE:    ", rm.MAX_CHECK_UPKEEP_SIZE());
+        console2.log("MAX_PERFORM_UPKEEP_SIZE:  ", rm.MAX_PERFORM_UPKEEP_SIZE());
+        console2.log("MAX_RECOVERY_ATTEMPTS:    ", rm.MAX_RECOVERY_ATTEMPTS());
+        console2.log("PREMIUM_FEE (wei):        ", rm.PREMIUM_MONTHLY_FEE());
+        console2.log("ANNUAL_FEE (wei):         ", rm.PREMIUM_ANNUAL_FEE());
+        console2.log("CURSOR_ADVANCE_INTERVAL:  ", rm.CURSOR_ADVANCE_INTERVAL());
+        console2.log("MIN_FREE (s):             ", rm.MIN_INACTIVITY_PERIOD_FREE());
+        console2.log("MIN_PREMIUM (s):          ", rm.MIN_INACTIVITY_PERIOD_PREMIUM());
 
-        // Assertions — revert the script if anything looks wrong
         require(rm.getTreasury() == cfg.treasury, "Deploy: treasury mismatch");
         require(rm.MIN_INACTIVITY_PERIOD_FREE() == cfg.minInactivityFree, "Deploy: minInactivityFree mismatch");
         require(rm.MIN_INACTIVITY_PERIOD_PREMIUM() == cfg.minInactivityPremium, "Deploy: minInactivityPremium mismatch");
@@ -102,8 +93,10 @@ contract Deploy is Script {
         require(rm.SUBSCRIPTION_DURATION() == cfg.subscriptionDuration, "Deploy: subscriptionDuration mismatch");
         require(rm.PREMIUM_MONTHLY_FEE() == cfg.premiumMonthlyFee, "Deploy: premiumMonthlyFee mismatch");
         require(rm.PREMIUM_ANNUAL_FEE() == cfg.premiumAnnualFee, "Deploy: premiumAnnualFee mismatch");
-        require(rm.MAX_BATCH_SIZE() == cfg.maxBatchSize, "Deploy: maxBatchSize mismatch");
+        require(rm.MAX_CHECK_UPKEEP_SIZE() == cfg.maxCheckUpkeepSize, "Deploy: maxCheckUpkeepSize mismatch");
+        require(rm.MAX_PERFORM_UPKEEP_SIZE() == cfg.maxPerformUpkeepSize, "Deploy: maxPerformUpkeepSize mismatch");
         require(rm.MAX_RECOVERY_ATTEMPTS() == cfg.maxRecoveryAttempts, "Deploy: maxRecoveryAttempts mismatch");
+        require(rm.CURSOR_ADVANCE_INTERVAL() == cfg.cursorAdvanceInterval, "Deploy: cursorAdvanceInterval mismatch");
         require(rm.getTotalRegistered() == 0, "Deploy: unexpected registrations");
         require(rm.getAccumulatedFees() == 0, "Deploy: unexpected fees");
 
