@@ -18,15 +18,21 @@ contract HelperConfig is Script {
     //////////////////////////////////////////////////////////////*/
 
     struct VaultConfig {
+        // Treasury
         address treasury;
+        // Inactivity periods
         uint256 minInactivityFree;
         uint256 minInactivityPremium;
         uint256 maxInactivityPeriod;
+        // Subscription
         uint256 subscriptionDuration;
         uint256 premiumMonthlyFee;
         uint256 premiumAnnualFee;
-        uint256 maxBatchSize;
+        // Automation
+        uint256 maxCheckUpkeepSize; // off-chain scan window (no gas constraint)
+        uint256 maxPerformUpkeepSize; // on-chain execution cap (gas-bound, keep ≤ 50 mainnet)
         uint8 maxRecoveryAttempts;
+        uint256 cursorAdvanceInterval; // idle cursor tick frequency
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -48,7 +54,7 @@ contract HelperConfig is Script {
     //////////////////////////////////////////////////////////////*/
 
     constructor() {
-        if (block.chainid == MAINNET_CHAIN_ID) {
+        if (block.chainid == ETH_MAINNET_CHAIN_ID) {
             activeConfig = _getMainnetConfig();
         } else if (block.chainid == SEPOLIA_CHAIN_ID) {
             activeConfig = _getSepoliaConfig();
@@ -57,15 +63,17 @@ contract HelperConfig is Script {
         }
 
         console2.log("=== HelperConfig ===");
-        console2.log("Chain ID:             ", block.chainid);
-        console2.log("Treasury:             ", activeConfig.treasury);
-        console2.log("MIN_FREE (seconds):   ", activeConfig.minInactivityFree);
-        console2.log("MIN_PREMIUM (seconds):", activeConfig.minInactivityPremium);
-        console2.log("SUB_DURATION (secs):  ", activeConfig.subscriptionDuration);
-        console2.log("PREMIUM_FEE_MONTHLY (wei):    ", activeConfig.premiumMonthlyFee);
-        console2.log("PREMIUM_FEE_ANNUAL (wei):    ", activeConfig.premiumAnnualFee);
-        console2.log("MAX_BATCH_SIZE:       ", activeConfig.maxBatchSize);
-        console2.log("MAX_RECOVERY_ATTEMPTS:", activeConfig.maxRecoveryAttempts);
+        console2.log("Chain ID:                 ", block.chainid);
+        console2.log("Treasury:                 ", activeConfig.treasury);
+        console2.log("MIN_FREE (s):             ", activeConfig.minInactivityFree);
+        console2.log("MIN_PREMIUM (s):          ", activeConfig.minInactivityPremium);
+        console2.log("SUB_DURATION (s):         ", activeConfig.subscriptionDuration);
+        console2.log("PREMIUM_FEE (wei):        ", activeConfig.premiumMonthlyFee);
+        console2.log("ANNUAL_FEE (wei):         ", activeConfig.premiumAnnualFee);
+        console2.log("MAX_CHECK_UPKEEP_SIZE:    ", activeConfig.maxCheckUpkeepSize);
+        console2.log("MAX_PERFORM_UPKEEP_SIZE:  ", activeConfig.maxPerformUpkeepSize);
+        console2.log("MAX_RECOVERY_ATTEMPTS:    ", activeConfig.maxRecoveryAttempts);
+        console2.log("CURSOR_ADVANCE_INTERVAL:  ", activeConfig.cursorAdvanceInterval);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -73,59 +81,88 @@ contract HelperConfig is Script {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev Base mainnet config. Treasury MUST be a Gnosis Safe multisig.
-     *      REPLACE 0x000...001 with your production multisig address before deploying.
+     * @dev Ethereum mainnet (Phase 1).
+     *
+     *      AUTOMATION RATIONALE:
+     *        MAX_CHECK_UPKEEP_SIZE = 5000
+     *          → Each Chainlink tick scans 5000 wallets off-chain.
+     *          → At 500k users: 100 ticks for a full scan.
+     *          → 5000 × ~800 gas (SLOAD) = ~4M simulation gas — within Chainlink's
+     *            6.5M simulation limit.
+     *
+     *        MAX_PERFORM_UPKEEP_SIZE = 50
+     *          → Worst-case ~100k gas per _executeRecovery (SSTOREs + ETH call + events).
+     *          → 50 × 100k = 5M gas per performUpkeep — safe under 30M block limit.
+     *
+     *        CURSOR_ADVANCE_INTERVAL = 1 hour
+     *          → 24 on-chain calls/day for idle cursor advancement.
+     *          → At ~40k gas per idle call, 20 gwei: ~$1.92/call → ~$46/day.
+     *          → At 500k users with MAX_CHECK_UPKEEP_SIZE=5000: full scan in 100 hours
+     *            (~4.2 days) — well within 180-day Premium minimum inactivity period.
+     *
+     *      TREASURY: Replace placeholder with your production Gnosis Safe address.
      */
     function _getMainnetConfig() internal pure returns (VaultConfig memory) {
         return VaultConfig({
-            treasury: 0x0000000000000000000000000000000000000001, // Replace with mainnet multisig
+            treasury: 0x0000000000000000000000000000000000000001, // Replace with Gnosis Safe address
             minInactivityFree: 365 days,
             minInactivityPremium: 180 days,
             maxInactivityPeriod: 3650 days,
             subscriptionDuration: 30 days,
             premiumMonthlyFee: 0.002 ether,
-            premiumAnnualFee: 0.02 ether,
-            maxBatchSize: 50,
-            maxRecoveryAttempts: 3
+            premiumAnnualFee: 0.02 ether, // Discounted
+            maxCheckUpkeepSize: 5000,
+            maxPerformUpkeepSize: 50,
+            maxRecoveryAttempts: 3,
+            cursorAdvanceInterval: 1 hours
         });
     }
 
     /**
-     * @dev Sepolia testnet config for QA and integration testing.
-     *      Treasury is read from the SEPOLIA_TREASURY env variable.
-     *      Short inactivity periods so you don't wait 180-365 days on testnet.
+     * @dev Sepolia testnet.
+     *
+     *      Short inactivity periods for rapid testnet iteration.
+     *      MAX_CHECK_UPKEEP_SIZE kept small (100) so test wallets are found quickly.
+     *      MAX_PERFORM_UPKEEP_SIZE = 10 to make batching behaviour testable with
+     *      a small number of registered wallets.
+     *      CURSOR_ADVANCE_INTERVAL = 30 seconds for fast cursor cycling during QA.
+     *
+     *      Treasury sourced from SEPOLIA_TREASURY env variable.
      */
     function _getSepoliaConfig() internal view returns (VaultConfig memory) {
         return VaultConfig({
             treasury: vm.envAddress("SEPOLIA_TREASURY"),
             minInactivityFree: 10 minutes,
             minInactivityPremium: 5 minutes,
-            maxInactivityPeriod: 30 minutes,
+            maxInactivityPeriod: 365 days,
             subscriptionDuration: 2.5 minutes,
             premiumMonthlyFee: 0.002 ether,
             premiumAnnualFee: 0.02 ether,
-            maxBatchSize: 50,
-            maxRecoveryAttempts: 3
+            maxCheckUpkeepSize: 100,
+            maxPerformUpkeepSize: 10,
+            maxRecoveryAttempts: 3,
+            cursorAdvanceInterval: 30 seconds
         });
     }
 
     /**
-     * @dev Local Anvil config. Uses forge-std's makeAddr for a deterministic
-     *      treasury address consistent across test runs.
-     *      Mirrors Sepolia short periods for fast local iteration.
+     * @dev Local Anvil.
+     *      Mirrors Sepolia for consistent local testing behaviour.
+     *      Uses forge-std makeAddr for a deterministic treasury.
      */
     function _getAnvilConfig() internal returns (VaultConfig memory) {
-        address localTreasury = makeAddr("treasury");
         return VaultConfig({
-            treasury: localTreasury,
+            treasury: makeAddr("treasury"),
             minInactivityFree: 10 minutes,
             minInactivityPremium: 5 minutes,
-            maxInactivityPeriod: 30 minutes,
-            subscriptionDuration: 1 minutes,
+            maxInactivityPeriod: 365 days,
+            subscriptionDuration: 2.5 minutes,
             premiumMonthlyFee: 0.002 ether,
             premiumAnnualFee: 0.02 ether,
-            maxBatchSize: 50,
-            maxRecoveryAttempts: 3
+            maxCheckUpkeepSize: 100,
+            maxPerformUpkeepSize: 10,
+            maxRecoveryAttempts: 3,
+            cursorAdvanceInterval: 30 seconds
         });
     }
 
