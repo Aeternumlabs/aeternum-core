@@ -72,16 +72,16 @@ contract AeternumVaultTest is StdInvariant, Test {
     function setUp() public {
         rm = new AeternumVault(
             treasury,
-            10 minutes, // MIN_INACTIVITY_PERIOD_FREE
-            5 minutes, // MIN_INACTIVITY_PERIOD_PREMIUM
-            30 minutes, // MAX_INACTIVITY_PERIOD
-            2.5 minutes, // SUBSCRIPTION_DURATION
+            365 days, // MIN_INACTIVITY_PERIOD_FREE
+            180 days, // MIN_INACTIVITY_PERIOD_PREMIUM
+            3650 days, // MAX_INACTIVITY_PERIOD
+            30 days, // SUBSCRIPTION_DURATION
             0.002 ether, // PREMIUM_MONTHLY_FEE
             0.02 ether, // PREMIUM_ANNUAL_FEE
-            100, // MAX_CHECK_UPKEEP_SIZE
-            10, // MAX_PERFORM_UPKEEP_SIZE
+            5000, // MAX_CHECK_UPKEEP_SIZE
+            50, // MAX_PERFORM_UPKEEP_SIZE
             3, // MAX_RECOVERY_ATTEMPTS
-            30 seconds // CURSOR_ADVANCE_INTERVAL
+            1 hours // CURSOR_ADVANCE_INTERVAL
         );
 
         FREE_PERIOD = rm.MIN_INACTIVITY_PERIOD_FREE();
@@ -110,10 +110,10 @@ contract AeternumVaultTest is StdInvariant, Test {
     {
         AeternumVault v = new AeternumVault(
             treasury,
-            10 minutes,
-            5 minutes,
-            30 minutes,
-            2.5 minutes,
+            365 days,
+            180 days,
+            3650 days,
+            30 days,
             0.002 ether,
             0.02 ether,
             checkSize,
@@ -192,7 +192,9 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_constructor_revertsOnZeroTreasury() public {
         vm.expectRevert(IAeternumVault.AeternumVault__ZeroAddress.selector);
-        new AeternumVault(address(0), 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 50, 3);
+        new AeternumVault(
+            address(0), 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 100, 10, 3, 30 seconds
+        );
     }
 
     function test_constructor_initialState() public view {
