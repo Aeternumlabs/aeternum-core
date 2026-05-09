@@ -177,7 +177,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-   /**
+    /**
      * @notice Initialises the vault with all immutable configuration.
      *
      * @param treasury_               Fee withdrawal address (recommend Gnosis Safe).
@@ -202,36 +202,35 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 premiumAnnualFee_,
         uint256 maxCheckUpkeepSize_,
         uint256 maxPerformUpkeepSize_,
-        uint8   maxRecoveryAttempts_,
+        uint8 maxRecoveryAttempts_,
         uint256 cursorAdvanceInterval_
     ) {
         // Validations
-        if (treasury_ == address(0))                       revert AeternumVault__ZeroAddress();
-        if (minInactivityPremium_ == 0)                    revert AeternumVault__InvalidInactivityPeriod();
-        if (minInactivityFree_ < minInactivityPremium_)    revert AeternumVault__InvalidInactivityPeriod();
-        if (maxInactivityPeriod_ < minInactivityFree_)     revert AeternumVault__InvalidInactivityPeriod();
-        if (subscriptionDuration_ == 0)                    revert AeternumVault__InvalidSubscriptionDuration();
-        if (premiumAnnualFee_ < premiumMonthlyFee_)        revert AeternumVault__InvalidPremiumPayment();
-        if (maxCheckUpkeepSize_ == 0)                      revert AeternumVault__InvalidConstructorParam();
-        if (maxPerformUpkeepSize_ == 0)                    revert AeternumVault__InvalidConstructorParam();
-        if (maxPerformUpkeepSize_ > maxCheckUpkeepSize_)   revert AeternumVault__MaxPerformUpkeepSizeExceeded();
-        if (maxRecoveryAttempts_ == 0)                     revert AeternumVault__MaxRecoveryAttemptsExceeded();
-        if (cursorAdvanceInterval_ == 0)                   revert AeternumVault__InvalidConstructorParam();
+        if (treasury_ == address(0)) revert AeternumVault__ZeroAddress();
+        if (minInactivityPremium_ == 0) revert AeternumVault__InvalidInactivityPeriod();
+        if (minInactivityFree_ < minInactivityPremium_) revert AeternumVault__InvalidInactivityPeriod();
+        if (maxInactivityPeriod_ < minInactivityFree_) revert AeternumVault__InvalidInactivityPeriod();
+        if (subscriptionDuration_ == 0) revert AeternumVault__InvalidSubscriptionDuration();
+        if (premiumAnnualFee_ < premiumMonthlyFee_) revert AeternumVault__InvalidPremiumPayment();
+        if (maxCheckUpkeepSize_ == 0) revert AeternumVault__InvalidConstructorParam();
+        if (maxPerformUpkeepSize_ == 0) revert AeternumVault__InvalidConstructorParam();
+        if (maxPerformUpkeepSize_ > maxCheckUpkeepSize_) revert AeternumVault__MaxPerformUpkeepSizeExceeded();
+        if (maxRecoveryAttempts_ == 0) revert AeternumVault__MaxRecoveryAttemptsExceeded();
+        if (cursorAdvanceInterval_ == 0) revert AeternumVault__InvalidConstructorParam();
 
         // Assignments
-        s_treasury                = treasury_;
-        MIN_INACTIVITY_PERIOD_FREE    = minInactivityFree_;
+        s_treasury = treasury_;
+        MIN_INACTIVITY_PERIOD_FREE = minInactivityFree_;
         MIN_INACTIVITY_PERIOD_PREMIUM = minInactivityPremium_;
-        MAX_INACTIVITY_PERIOD         = maxInactivityPeriod_;
-        SUBSCRIPTION_DURATION         = subscriptionDuration_;
-        PREMIUM_MONTHLY_FEE           = premiumMonthlyFee_;
-        PREMIUM_ANNUAL_FEE            = premiumAnnualFee_;
-        MAX_CHECK_UPKEEP_SIZE         = maxCheckUpkeepSize_;
-        MAX_PERFORM_UPKEEP_SIZE       = maxPerformUpkeepSize_;
-        MAX_RECOVERY_ATTEMPTS         = maxRecoveryAttempts_;
-        CURSOR_ADVANCE_INTERVAL       = cursorAdvanceInterval_;
+        MAX_INACTIVITY_PERIOD = maxInactivityPeriod_;
+        SUBSCRIPTION_DURATION = subscriptionDuration_;
+        PREMIUM_MONTHLY_FEE = premiumMonthlyFee_;
+        PREMIUM_ANNUAL_FEE = premiumAnnualFee_;
+        MAX_CHECK_UPKEEP_SIZE = maxCheckUpkeepSize_;
+        MAX_PERFORM_UPKEEP_SIZE = maxPerformUpkeepSize_;
+        MAX_RECOVERY_ATTEMPTS = maxRecoveryAttempts_;
+        CURSOR_ADVANCE_INTERVAL = cursorAdvanceInterval_;
     }
-
 
     /*//////////////////////////////////////////////////////////////
                          USER-FACING FUNCTIONS
@@ -523,57 +522,60 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Determines which wallets (if any) are ready for recovery.
+     * @notice Scans the current cursor window for wallets due for recovery.
      *
-     * @dev    Called off-chain by Chainlink Automation nodes. Gas cost is not a
-     *         concern here; the function iterates a paginated window of wallets.
+     * @dev    ARCHITECTURE: Two-variable design separating scan cost from execution cost.
      *
-     *         Pagination via `checkData`:
-     *           `checkData = abi.encode(uint256 startIndex, uint256 batchSize)`
-     *         If `checkData` is empty, defaults to startIndex=0, batchSize=MAX_BATCH_SIZE.
-     *         Callers should paginate across the full registry in separate upkeep
-     *         registrations when the wallet count is large.
+     *         MAX_CHECK_UPKEEP_SIZE (off-chain, free):
+     *           Runs in Chainlink's simulation environment — no gas cost, no block
+     *           limit. Scans a window of up to MAX_CHECK_UPKEEP_SIZE wallets and
+     *           collects ALL due wallets, capped at MAX_PERFORM_UPKEEP_SIZE for
+     *           the returned candidates.
      *
-     * @param  checkData ABI-encoded (startIndex, batchSize) for pagination.
-     * @return upkeepNeeded True if at least one wallet is due for recovery.
-     * @return performData  ABI-encoded address[] of wallets ready for recovery.
+     *         MAX_PERFORM_UPKEEP_SIZE (on-chain, gas-bound):
+     *           Only the candidates returned here are passed to performUpkeep.
+     *           Bounded tightly (50 on mainnet) to stay well within block gas limits
+     *           given worst-case ~100k gas per _executeRecovery call.
+     *
+     *         CURSOR BEHAVIOUR:
+     *           • Due wallets found  → cursor HOLDS at current position.
+     *             Next call re-scans the same window until fully cleared.
+     *           • No due wallets     → cursor ADVANCES to next window after
+     *             CURSOR_ADVANCE_INTERVAL seconds have elapsed.
+     *           • Window exhausted   → cursor wraps to 0.
+     *
+     *         STALE DATA SAFETY:
+     *           performUpkeep re-validates every candidate before acting.
+     *           Stale entries (e.g. wallet pinged between check and perform)
+     *           are silently skipped. No ETH is sent to an ineligible wallet.
+     *
+     * @return upkeepNeeded True when performUpkeep should be called.
+     * @return performData  ABI-encoded (address[] candidates, uint256 nextCursor).
      */
-    function checkUpkeep(bytes calldata checkData)
+    function checkUpkeep(
+        bytes calldata /* checkData */
+    )
         external
         view
         override(IAeternumVault, AutomationCompatibleInterface)
         returns (bool upkeepNeeded, bytes memory performData)
     {
-        uint256 startIndex;
-        uint256 batchSize;
+        uint256 total = s_registeredWallets.length;
+        if (total == 0) return (false, bytes(""));
 
-        if (checkData.length > 0) {
-            (startIndex, batchSize) = abi.decode(checkData, (uint256, uint256));
-        } else {
-            startIndex = 0;
-            batchSize = MAX_BATCH_SIZE;
-        }
+        // Wrap cursor if registry has shrunk below it since last advance
+        uint256 cursor = s_checkCursor >= total ? 0 : s_checkCursor;
 
-        // Cap batchSize to MAX_BATCH_SIZE to mirror performUpkeep limits
-        if (batchSize > MAX_BATCH_SIZE) {
-            batchSize = MAX_BATCH_SIZE;
-        }
+        // Define scan window: [cursor, end)
+        uint256 end = cursor + MAX_CHECK_UPKEEP_SIZE;
+        if (end > total) end = total;
 
-        uint256 totalWallets = s_registeredWallets.length;
-
-        // Early exit: nothing to check
-        if (totalWallets == 0 || startIndex >= totalWallets) {
-            return (false, bytes(""));
-        }
-
-        uint256 endIndex = startIndex + batchSize;
-        if (endIndex > totalWallets) endIndex = totalWallets;
-
-        // Allocate maximum possible size; trim with assembly after filling
-        address[] memory candidates = new address[](endIndex - startIndex);
+        // Collect due wallets up to MAX_PERFORM_UPKEEP_SIZE
+        // Allocate at full perform size; trim with assembly after fill
+        address[] memory candidates = new address[](MAX_PERFORM_UPKEEP_SIZE);
         uint256 count = 0;
 
-        for (uint256 i = startIndex; i < endIndex;) {
+        for (uint256 i = cursor; i < end;) {
             address wallet = s_registeredWallets[i];
             RecoveryConfig storage config = s_configs[wallet];
 
@@ -585,6 +587,9 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
                 unchecked {
                     ++count;
                 }
+                // Stop scanning once we have a full perform batch.
+                // Remaining due wallets in window caught on next call (cursor holds).
+                if (count == MAX_PERFORM_UPKEEP_SIZE) break;
             }
 
             unchecked {
@@ -593,45 +598,75 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         }
 
         if (count > 0) {
-            // Trim the array to the actual number of candidates found
-            assembly {
-                mstore(candidates, count)
-            }
-            upkeepNeeded = true;
-            performData = abi.encode(candidates);
+            // Recovery needed: HOLD cursor
+            // nextCursor == cursor signals performUpkeep NOT to update the advance
+            // timestamp. The window is re-scanned next call until fully cleared.
+            assembly { mstore(candidates, count) }
+            return (true, abi.encode(candidates, cursor));
         }
+
+        // Window clear: attempt cursor advancement
+        // Calculate where cursor would move to next
+        uint256 nextCursor = (end >= total) ? 0 : end;
+
+        if (block.timestamp >= s_lastCursorAdvance + CURSOR_ADVANCE_INTERVAL) {
+            // Interval elapsed — advance cursor to next window
+            address[] memory empty = new address[](0);
+            return (true, abi.encode(empty, nextCursor));
+        }
+
+        // Interval not yet elapsed — nothing to do
+        return (false, bytes(""));
     }
 
     /**
-     * @notice Executes pending recoveries supplied by `checkUpkeep`.
+     * @notice Executes pending recoveries and manages the rolling cursor.
      *
-     * @dev    Called on-chain by the registered Chainlink Automation upkeep.
-     *         Every wallet is re-validated before acting to guard against:
-     *           • Stale `performData` (user pinged between check and perform).
-     *           • Race conditions across multiple Automation nodes.
-     *           • Duplicate entries within a single `performData` batch.
-     *         Invalid entries are silently skipped to prevent one bad address from
-     *         blocking the rest of the batch.
+     * @dev    CURSOR LOGIC:
+     *           • Always writes `nextCursor` to `s_checkCursor`.
+     *           • Updates `s_lastCursorAdvance` ONLY when cursor actually moves
+     *             (nextCursor != currentCursor). This correctly gates idle advancement
+     *             without interfering with active recovery passes where cursor holds.
      *
-     *         Security: guarded by `nonReentrant`. CEI is enforced inside
-     *         `_executeRecovery` — all state changes precede the ETH transfer.
+     *         STALE DATA SAFETY:
+     *           Every wallet in `walletsToRecover` is re-validated inside
+     *           `_executeRecovery` before any ETH is transferred. If a wallet
+     *           is no longer eligible (user pinged, deposited, or cancelled between
+     *           checkUpkeep and performUpkeep), it is silently skipped. The cursor
+     *           still advances or holds correctly regardless of how many are skipped.
      *
-     *         Slither: calls-loop is acknowledged. External ETH transfers to distinct
-     *         backup addresses inherently require a loop. Mitigated by nonReentrant,
-     *         CEI pattern, re-validation per iteration, and MAX_BATCH_SIZE cap.
+     *         BATCH SIZE GUARD:
+     *           Reverts if candidates exceed MAX_PERFORM_UPKEEP_SIZE to defend against
+     *           crafted performData with an oversized array that could exhaust block gas.
      *
-     * @param performData ABI-encoded address[] returned by `checkUpkeep`.
+     * @param performData ABI-encoded (address[] candidates, uint256 nextCursor)
+     *                    as produced by checkUpkeep.
      */
     function performUpkeep(bytes calldata performData)
         external
         override(IAeternumVault, AutomationCompatibleInterface)
         nonReentrant
     {
-        address[] memory walletsToRecover = abi.decode(performData, (address[]));
+        (address[] memory walletsToRecover, uint256 nextCursor) = abi.decode(performData, (address[], uint256));
 
         uint256 length = walletsToRecover.length;
-        if (length > MAX_BATCH_SIZE) revert AeternumVault__MaxBatchSizeExceeded();
 
+        // Guard against oversized crafted performData
+        if (length > MAX_PERFORM_UPKEEP_SIZE) revert AeternumVault__MaxPerformUpkeepSizeExceeded();
+
+        uint256 currentCursor = s_checkCursor;
+
+        // Always update cursor position
+        s_checkCursor = nextCursor;
+
+        // Only reset advance timestamp when cursor actually moves forward.
+        // When cursor holds (recovery pass), timestamp is left unchanged so the
+        // idle interval timer continues running correctly in the background.
+        if (nextCursor != currentCursor) {
+            s_lastCursorAdvance = block.timestamp;
+        }
+
+        // Execute recoveries — each individually re-validated (stale data safety)
         for (uint256 i = 0; i < length;) {
             _executeRecovery(walletsToRecover[i]);
             unchecked {
