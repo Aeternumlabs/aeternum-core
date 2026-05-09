@@ -803,6 +803,16 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         return s_registeredWallets.length;
     }
 
+    /// @notice Returns the current registry scan cursor position.
+    function getCheckCursor() external view returns (uint256) {
+        return s_checkCursor;
+    }
+
+    /// @notice Returns the timestamp of the last idle cursor advancement.
+    function getLastCursorAdvance() external view returns (uint256) {
+        return s_lastCursorAdvance;
+    }
+
     /*//////////////////////////////////////////////////////////////
                          INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
