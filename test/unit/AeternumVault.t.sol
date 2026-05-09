@@ -990,7 +990,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         (bool needed, bytes memory performData) = rm.checkUpkeep(bytes(""));
 
         assertTrue(needed);
-        (address[] memory candidates,) = abi.decode(performData, (address[], uint256));
+        (address[] memory candidates,,) = abi.decode(performData, (address[], uint256, bool));
         assertEq(candidates.length, 1);
         assertEq(candidates[0], alice);
     }
@@ -1006,7 +1006,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         if (needed) {
             // Cursor may advance (idle tick) but alice must never be a candidate
-            (address[] memory candidates,) = abi.decode(performData, (address[], uint256));
+            (address[] memory candidates,,) = abi.decode(performData, (address[], uint256, bool));
             for (uint256 i = 0; i < candidates.length; i++) {
                 assertTrue(candidates[i] != alice, "Zero-balance wallet must not appear as candidate");
             }
@@ -1024,7 +1024,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         (bool needed, bytes memory performData) = cv.checkUpkeep(bytes(""));
 
         assertTrue(needed);
-        (address[] memory candidates,) = abi.decode(performData, (address[], uint256));
+        (address[] memory candidates,,) = abi.decode(performData, (address[], uint256, bool));
         assertEq(candidates.length, cv.MAX_PERFORM_UPKEEP_SIZE()); // 3, not 10
     }
 
@@ -1037,7 +1037,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         (bool needed, bytes memory performData) = rm.checkUpkeep(arbitraryCheckData);
 
         assertTrue(needed);
-        (address[] memory candidates,) = abi.decode(performData, (address[], uint256));
+        (address[] memory candidates,,) = abi.decode(performData, (address[], uint256, bool));
         assertEq(candidates[0], alice);
     }
 
@@ -1057,7 +1057,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 cursorBefore = cv.getCheckCursor(); // 0
 
         (, bytes memory performData) = cv.checkUpkeep(bytes(""));
-        (, uint256 nextCursor) = abi.decode(performData, (address[], uint256));
+        (, uint256 nextCursor,) = abi.decode(performData, (address[], uint256, bool));
 
         // nextCursor must equal current cursor — window held
         assertEq(nextCursor, cursorBefore, "Cursor should HOLD when due wallets exist");
@@ -1130,7 +1130,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         (address[] memory candidates, uint256 nextCursor) = abi.decode(performData, (address[], uint256));
 
         assertEq(candidates.length, 0, "No due wallets - candidates should be empty");
-        assertGt(nextCursor, cv.getCheckCursor(), "nextCursor should be ahead of current cursor");
+        assertTrue(isIdleAdvance, "Should be flagged as an idle advance");
     }
 
     function test_cursor_advancesToNextWindow_afterIdleAdvance() public {
@@ -1212,7 +1212,6 @@ contract AeternumVaultTest is StdInvariant, Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_cursor_advancesAfterWindowFullyCleared() public {
-        // check=6, perform=3 — register 6 due wallets, clear in 2 batches, then advance
         cv = _deployCursorVault(6, 3, 30 seconds);
         _registerWallets(cv, 6, 0);
         vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD_FREE() + 1);
@@ -1228,19 +1227,24 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(cv.getCheckCursor(), 0);
         assertEq(cv.getTotalRegistered(), 0);
 
-        // Window now clear. Before interval: no upkeep needed
+        // Add 3 new wallets (registered NOW — not due yet)
+        // Registry is no longer empty, so checkUpkeep won't early-exit
+        _registerWallets(cv, 3, 100);
+        assertEq(cv.getTotalRegistered(), 3);
+
+        // Window clear (new wallets not due). Before interval: no upkeep needed
         (bool needed,) = cv.checkUpkeep(bytes(""));
         assertFalse(needed);
 
-        // After interval: cursor advances
+        // After interval: idle advance should trigger
         vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
         (bool neededAfter, bytes memory pd3) = cv.checkUpkeep(bytes(""));
-        assertTrue(neededAfter);
+        assertTrue(neededAfter, "Should trigger idle cursor advance");
 
-        (, uint256 nextCursor) = abi.decode(pd3, (address[], uint256));
-        // Registry is empty, so end >= total wraps to 0. nextCursor = 0.
-        // cursor was 0, nextCursor is 0 — but this is the wrap case, not hold.
-        // Verify by checking the advance timestamp updates after performUpkeep.
+        (address[] memory candidates,, bool isIdleAdvance) = abi.decode(pd3, (address[], uint256, bool));
+        assertEq(candidates.length, 0, "No due wallets");
+        assertTrue(isIdleAdvance, "Should be idle advance");
+
         cv.performUpkeep(pd3);
         assertEq(cv.getLastCursorAdvance(), block.timestamp);
     }
@@ -1297,7 +1301,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_performUpkeep_revertsIfCandidatesExceedMaxPerformSize() public {
         uint256 overSize = rm.MAX_PERFORM_UPKEEP_SIZE() + 1;
         address[] memory tooMany = new address[](overSize);
-        bytes memory pd = abi.encode(tooMany, uint256(0));
+        bytes memory pd = abi.encode(tooMany, uint256(0), false);
 
         vm.expectRevert(IAeternumVault.AeternumVault__MaxPerformUpkeepSizeExceeded.selector);
         rm.performUpkeep(pd);
@@ -1430,7 +1434,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
         (, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        (, uint256 nextCursor) = abi.decode(pd, (address[], uint256));
+        (, uint256 nextCursor,) = abi.decode(pd, (address[], uint256, bool));
 
         cv.performUpkeep(pd);
 
@@ -1607,7 +1611,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         if (advanceNeeded) {
             rm.performUpkeep(advancePd);
             // Verify abandoned wallet is not in the candidates
-            (address[] memory candidates,) = abi.decode(advancePd, (address[], uint256));
+            (address[] memory candidates,,) = abi.decode(advancePd, (address[], uint256, bool));
             for (uint256 i = 0; i < candidates.length; i++) {
                 assertTrue(candidates[i] != alice, "Abandoned wallet must never appear as candidate");
             }
@@ -1766,7 +1770,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         address[] memory victims = new address[](1);
         victims[0] = address(attacker);
-        bytes memory performData = abi.encode(victims);
+        bytes memory performData = abi.encode(victims, uint256(0), false);
 
         // performUpkeep should succeed but reentrant calls inside attacker.receive() should fail
         rm.performUpkeep(performData);
