@@ -72,14 +72,16 @@ contract AeternumVaultTest is StdInvariant, Test {
     function setUp() public {
         rm = new AeternumVault(
             treasury,
-            365 days, // MIN_INACTIVITY_PERIOD_FREE
-            180 days, // MIN_INACTIVITY_PERIOD_PREMIUM
-            3650 days, // MAX_INACTIVITY_PERIOD
-            30 days, // SUBSCRIPTION_DURATION
+            10 minutes, // MIN_INACTIVITY_PERIOD_FREE
+            5 minutes, // MIN_INACTIVITY_PERIOD_PREMIUM
+            30 minutes, // MAX_INACTIVITY_PERIOD
+            2.5 minutes, // SUBSCRIPTION_DURATION
             0.002 ether, // PREMIUM_MONTHLY_FEE
             0.02 ether, // PREMIUM_ANNUAL_FEE
-            50, // MAX_BATCH_SIZE
-            3 // MAX_RECOVERY_ATTEMPTS
+            100, // MAX_CHECK_UPKEEP_SIZE
+            10, // MAX_PERFORM_UPKEEP_SIZE
+            3, // MAX_RECOVERY_ATTEMPTS
+            30 seconds // CURSOR_ADVANCE_INTERVAL
         );
 
         FREE_PERIOD = rm.MIN_INACTIVITY_PERIOD_FREE();
@@ -90,7 +92,6 @@ contract AeternumVaultTest is StdInvariant, Test {
         deal(bob, STARTING_BALANCE);
         deal(carol, STARTING_BALANCE);
 
-        // Expose AeternumVault as the invariant target
         targetContract(address(rm));
     }
 
