@@ -132,6 +132,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     {
         users = new address[](count);
         backups = new address[](count);
+        uint256 period = vault.MIN_INACTIVITY_PERIOD_FREE();
 
         for (uint256 i = 0; i < count; i++) {
             address user = address(uint160(0xA000 + seed + i));
@@ -139,10 +140,7 @@ contract AeternumVaultTest is StdInvariant, Test {
             deal(user, 10 ether);
             vm.prank(user);
             vault.register{value: 1 ether}(
-                backup,
-                vault.MIN_INACTIVITY_PERIOD_FREE(),
-                IAeternumVault.SubscriptionTier.Free,
-                IAeternumVault.SubscriptionPlan.Monthly
+                backup, period, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
             );
             users[i] = user;
             backups[i] = backup;
@@ -228,10 +226,37 @@ contract AeternumVaultTest is StdInvariant, Test {
         new AeternumVault(treasury, 365 days, 180 days, 3650 days, 0, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours);
     }
 
-    function test_constructor_revertsIfMaxBatchSizeIsZero() public {
-        vm.expectRevert(IAeternumVault.AeternumVault__MaxPerformUpkeepSizeExceeded.selector);
+    function test_constructor_revertsIfMaxPerformUpkeepSizeIsZero() public {
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidConstructorParam.selector);
         new AeternumVault(
-            treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 50, 3, 1 hours
+            treasury,
+            365 days,
+            180 days,
+            3650 days,
+            30 days,
+            0.002 ether,
+            0.02 ether,
+            5000,
+            0, // ← maxPerformUpkeepSize = 0, should revert
+            3,
+            1 hours
+        );
+    }
+
+    function test_constructor_revertsIfMaxRecoveryAttemptsIsZero() public {
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidConstructorParam.selector);
+        new AeternumVault(
+            treasury,
+            365 days,
+            180 days,
+            3650 days,
+            30 days,
+            0.002 ether,
+            0.02 ether,
+            5000,
+            50,
+            0, // ← maxRecoveryAttempts = 0, should revert
+            1 hours
         );
     }
 
@@ -987,15 +1012,23 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(candidates[0], alice);
     }
 
-    function test_checkUpkeep_returnsFalseIfWalletDueButBalanceIsZero() public {
+    function test_checkUpkeep_doesNotIncludeZeroBalanceWallet_inCandidates() public {
         vm.prank(alice);
         rm.register{value: 0}(
             aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
         );
         _warpPastInactivity(alice);
 
-        (bool needed,) = rm.checkUpkeep(bytes(""));
-        assertFalse(needed);
+        (bool needed, bytes memory performData) = rm.checkUpkeep(bytes(""));
+
+        if (needed) {
+            // Cursor may advance (idle tick) but alice must never be a candidate
+            (address[] memory candidates,) = abi.decode(performData, (address[], uint256));
+            for (uint256 i = 0; i < candidates.length; i++) {
+                assertTrue(candidates[i] != alice, "Zero-balance wallet must not appear as candidate");
+            }
+        }
+        // Whether needed or not, the zero-balance wallet is correctly excluded
     }
 
     function test_checkUpkeep_returnsMaxPerformSize_whenMoreWalletsDueThanPerformCap() public {
@@ -1582,23 +1615,25 @@ contract AeternumVaultTest is StdInvariant, Test {
             rm.performUpkeep(pd);
         }
 
-        // After abandonment — advance past interval, verify no recovery upkeep
+        // Registry is now empty. Warp past interval for idle advance.
         vm.warp(block.timestamp + rm.CURSOR_ADVANCE_INTERVAL() + 1);
-        (, bytes memory advancePd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(advancePd); // idle advance
 
-        // Now check — registry empty, nothing to recover
-        (bool needed,) = rm.checkUpkeep(bytes(""));
-        // May be true (cursor advance) or false depending on timing, but
-        // any candidates returned must NOT include the abandoned wallet
-        if (needed) {
+        (bool advanceNeeded, bytes memory advancePd) = rm.checkUpkeep(bytes(""));
+
+        // Only call performUpkeep if checkUpkeep says to — never on empty bytes
+        if (advanceNeeded) {
+            rm.performUpkeep(advancePd);
+            // Verify abandoned wallet is not in the candidates
             (address[] memory candidates,) = abi.decode(advancePd, (address[], uint256));
             for (uint256 i = 0; i < candidates.length; i++) {
                 assertTrue(candidates[i] != alice, "Abandoned wallet must never appear as candidate");
             }
         }
-    }
 
+        // Registry empty — confirmed abandoned wallet no longer monitored
+        assertEq(rm.getTotalRegistered(), 0);
+        assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
+    }
     /*//////////////////////////////////////////////////////////////
                       12. TREASURY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
