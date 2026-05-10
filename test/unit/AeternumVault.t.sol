@@ -962,19 +962,19 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, PREMIUM_PERIOD);
     }
 
-    function test_renewSubscription_doesNotEmitInactivityPeriodUpdated_whenZeroPassed() public {
+    function test_renewSubscription_doesNotChangeInactivityPeriod_whenZeroPassed() public {
         _registerAliceFree();
+        uint256 periodBefore = rm.getRecoveryConfig(alice).inactivityPeriod;
 
-        // InactivityPeriodUpdated must NOT be emitted when newInactivityPeriod = 0
-        vm.recordLogs();
         vm.prank(alice);
         rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, 0);
 
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 eventSig = keccak256("InactivityPeriodUpdated(address,uint256)");
-        for (uint256 i = 0; i < logs.length; i++) {
-            assertTrue(logs[i].topics[0] != eventSig, "InactivityPeriodUpdated must not fire when period unchanged");
-        }
+        // Period unchanged is the definitive proof the update path was not taken
+        assertEq(
+            rm.getRecoveryConfig(alice).inactivityPeriod,
+            periodBefore,
+            "Inactivity period must remain unchanged when 0 is passed"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
