@@ -132,16 +132,16 @@ contract HelperConfig is Script {
     function _getSepoliaConfig() internal view returns (VaultConfig memory) {
         return VaultConfig({
             treasury: vm.envAddress("SEPOLIA_TREASURY"),
-            minInactivityFree: 10 minutes,
-            minInactivityPremium: 5 minutes,
-            maxInactivityPeriod: 30 minutes,
-            subscriptionDuration: 2.5 minutes,
-            premiumMonthlyFee: 0.002 ether,
-            premiumAnnualFee: 0.02 ether,
-            maxCheckUpkeepSize: 100,
-            maxPerformUpkeepSize: 10,
-            maxRecoveryAttempts: 3,
-            cursorAdvanceInterval: 30 seconds
+            minInactivityFree: 10 minutes,
+            minInactivityPremium: 5 minutes,
+            maxInactivityPeriod: 3650 days,
+            subscriptionDuration: 30 days,
+            premiumMonthlyFee: 0.002 ether,
+            premiumAnnualFee: 0.02 ether, // Discounted
+            maxCheckUpkeepSize: 5000,
+            maxPerformUpkeepSize: 50,
+            maxRecoveryAttempts: 3,
+            cursorAdvanceInterval: 1 hours
         });
     }
 
@@ -153,16 +153,16 @@ contract HelperConfig is Script {
     function _getAnvilConfig() internal returns (VaultConfig memory) {
         return VaultConfig({
             treasury: makeAddr("treasury"),
-            minInactivityFree: 10 minutes,
-            minInactivityPremium: 5 minutes,
-            maxInactivityPeriod: 30 minutes,
-            subscriptionDuration: 2.5 minutes,
-            premiumMonthlyFee: 0.002 ether,
-            premiumAnnualFee: 0.02 ether,
-            maxCheckUpkeepSize: 100,
-            maxPerformUpkeepSize: 10,
-            maxRecoveryAttempts: 3,
-            cursorAdvanceInterval: 30 seconds
+            minInactivityFree: 10 minutes,
+            minInactivityPremium: 5 minutes,
+            maxInactivityPeriod: 3650 days,
+            subscriptionDuration: 30 days,
+            premiumMonthlyFee: 0.002 ether,
+            premiumAnnualFee: 0.02 ether, // Discounted
+            maxCheckUpkeepSize: 5000,
+            maxPerformUpkeepSize: 50,
+            maxRecoveryAttempts: 3,
+            cursorAdvanceInterval: 1 hours
         });
     }
 
