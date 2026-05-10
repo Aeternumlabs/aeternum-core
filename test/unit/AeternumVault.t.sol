@@ -1128,7 +1128,7 @@ function test_cursor_advancesWithEmptyCandidates_whenWindowClear_andIntervalElap
     (address[] memory candidates,, bool isIdleAdvance) =
         abi.decode(performData, (address[], uint256, bool));
 
-    assertEq(candidates.length, 0, "No due wallets — candidates should be empty");
+    assertEq(candidates.length, 0, "No due wallets - candidates should be empty");
     assertTrue(isIdleAdvance, "Should be flagged as an idle advance");
 }
 
