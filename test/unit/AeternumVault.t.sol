@@ -1225,26 +1225,33 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(cv.getCheckCursor(), 0);
         assertEq(cv.getTotalRegistered(), 0);
 
-        // Add 3 new wallets (registered NOW — not due yet)
-        // Registry is no longer empty, so checkUpkeep won't early-exit
+        // Add 3 non-due wallets so registry isn't empty for future checks
         _registerWallets(cv, 3, 100);
         assertEq(cv.getTotalRegistered(), 3);
 
-        // Window clear (new wallets not due). Before interval: no upkeep needed
-        (bool needed,) = cv.checkUpkeep(bytes(""));
-        assertFalse(needed);
+        // s_lastCursorAdvance is still 0 (recovery passes don't touch it),
+        // and block.timestamp is 365 days >> 30s interval, so idle advance
+        // fires immediately. Consume it to reset the timer.
+        (bool immediateAdvance, bytes memory immPd) = cv.checkUpkeep(bytes(""));
+        assertTrue(immediateAdvance, "Idle advance immediately eligible after recovery clears");
+        cv.performUpkeep(immPd);
+        assertEq(cv.getLastCursorAdvance(), block.timestamp, "Timer reset after first idle advance");
 
-        // After interval: idle advance should trigger
+        // Interval just reset — checkUpkeep should now return false
+        (bool tooSoon,) = cv.checkUpkeep(bytes(""));
+        assertFalse(tooSoon, "Should return false before interval elapses again");
+
+        // After interval elapses, idle advance triggers again
         vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
         (bool neededAfter, bytes memory pd3) = cv.checkUpkeep(bytes(""));
-        assertTrue(neededAfter, "Should trigger idle cursor advance");
+        assertTrue(neededAfter, "Should trigger idle cursor advance after interval");
 
         (address[] memory candidates,, bool isIdleAdvance) = abi.decode(pd3, (address[], uint256, bool));
-        assertEq(candidates.length, 0, "No due wallets");
-        assertTrue(isIdleAdvance, "Should be idle advance");
+        assertEq(candidates.length, 0, "No due wallets - window is clear");
+        assertTrue(isIdleAdvance, "Should be flagged as idle advance");
 
         cv.performUpkeep(pd3);
-        assertEq(cv.getLastCursorAdvance(), block.timestamp);
+        assertEq(cv.getLastCursorAdvance(), block.timestamp, "Timestamp updated after second idle advance");
     }
 
     /*//////////////////////////////////////////////////////////////
