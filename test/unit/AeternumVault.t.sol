@@ -945,11 +945,11 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_renewSubscription_revertsIfNewPeriodExceedsMax() public {
         _registerAliceFree();
+        uint256 tooLong = rm.MAX_INACTIVITY_PERIOD() + 1;
+
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}(
-            IAeternumVault.SubscriptionPlan.Monthly, rm.MAX_INACTIVITY_PERIOD() + 1
-        );
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, tooLong);
     }
 
     function test_renewSubscription_emitsInactivityPeriodUpdated_whenPeriodChanged() public {
