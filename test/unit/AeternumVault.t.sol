@@ -821,7 +821,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerAliceFree();
         vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE - 1}(IAeternumVault.SubscriptionPlan.Monthly);
+        rm.renewSubscription{value: PREMIUM_FEE - 1}(IAeternumVault.SubscriptionPlan.Monthly, 0);
     }
 
     function test_renewSubscription_whenExpired_startsFresh() public {
@@ -855,7 +855,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
 
         vm.prank(alice);
-        rm.renewSubscription{value: annualFee}(IAeternumVault.SubscriptionPlan.Annual);
+        rm.renewSubscription{value: annualFee}(IAeternumVault.SubscriptionPlan.Annual, 0);
 
         assertEq(rm.getRecoveryConfig(alice).subscriptionExpiry, currentExpiry + 12 * rm.SUBSCRIPTION_DURATION());
     }
@@ -866,7 +866,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.renewSubscription{value: annualFee - 1}(IAeternumVault.SubscriptionPlan.Annual);
+        rm.renewSubscription{value: annualFee - 1}(IAeternumVault.SubscriptionPlan.Annual, 0);
     }
 
     function test_renewSubscription_monthly_revertsIfOverpaid() public {
@@ -874,7 +874,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         // Sending even 1 wei over should revert — overspend goes to treasury otherwise
         vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE + 1}(IAeternumVault.SubscriptionPlan.Monthly);
+        rm.renewSubscription{value: PREMIUM_FEE + 1}(IAeternumVault.SubscriptionPlan.Monthly, 0);
     }
 
     function test_renewSubscription_annual_revertsIfOverpaid() public {
@@ -882,7 +882,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
         vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.renewSubscription{value: annualFee + 1}(IAeternumVault.SubscriptionPlan.Annual);
+        rm.renewSubscription{value: annualFee + 1}(IAeternumVault.SubscriptionPlan.Annual, 0);
     }
 
     function test_renewSubscription_monthly_exactPaymentAccumulatesExactFee() public {
@@ -902,7 +902,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 feesBefore = rm.getAccumulatedFees();
 
         vm.prank(alice);
-        rm.renewSubscription{value: annualFee}(IAeternumVault.SubscriptionPlan.Annual);
+        rm.renewSubscription{value: annualFee}(IAeternumVault.SubscriptionPlan.Annual, 0);
 
         assertEq(rm.getAccumulatedFees(), feesBefore + annualFee);
     }

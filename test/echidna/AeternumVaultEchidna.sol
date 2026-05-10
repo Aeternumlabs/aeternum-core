@@ -211,7 +211,7 @@ contract AeternumVaultEchidna {
 
         uint256 fee = vault.PREMIUM_MONTHLY_FEE();
 
-        try vault.renewSubscription{value: fee}(IAeternumVault.SubscriptionPlan.Monthly) {} catch {}
+        try vault.renewSubscription{value: fee}(IAeternumVault.SubscriptionPlan.Monthly, 0) {} catch {}
     }
 
     /**
