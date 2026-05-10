@@ -51,26 +51,45 @@ AeternumVault
 ```
 aeternum-core/
 ├── src/
-│   ├── AeternumVault.sol                    ← Core contract
+│   ├── AeternumVault.sol                          ← Core contract
 │   └── interfaces/
-│       ├── IAeternumVault.sol               ← Full interface (events, errors, structs, functions)
-│       └── AutomationCompatibleInterface.sol ← Inlined Chainlink interface
+│       ├── IAeternumVault.sol                     ← Full interface (events, errors, structs, functions)
+│       └── AutomationCompatibleInterface.sol      ← Inlined Chainlink interface
 │
 ├── test/
 │   ├── unit/
-│   │   └── AeternumVault.t.sol              ← Unit, fuzz, and invariant tests
+│   │   └── AeternumVault.t.sol                    ← Unit, fuzz, and invariant tests
+│   ├── echidna/
+│   │   └── AeternumVaultEchidna.sol               ← Echidna property-based fuzzing suite
 │   └── mocks/
-│       ├── ReentrantAttacker.sol            ← Reentrancy security test helper
-│       └── RejectingReceiver.sol            ← Failed recovery simulation helper
+│       ├── ReentrantAttacker.sol                  ← Reentrancy security test helper
+│       ├── RejectingReceiver.sol                  ← Failed recovery simulation helper
+│       ├── RejectingCallerMock.sol                ← Transfer failure simulation (withdrawAll/cancel)
+│       └── RejectingTreasuryMock.sol              ← Treasury transfer failure simulation
 │
 ├── script/
-│   ├── Deploy.s.sol                         ← Deployment script with post-deploy checks
-│   └── HelperConfig.s.sol                   ← Network-aware configuration resolver
+│   ├── Deploy.s.sol                               ← Deployment script with post-deploy checks
+│   └── HelperConfig.s.sol                         ← Network-aware configuration resolver
 │
-├── lib/                                     ← Foundry dependencies
-├── foundry.toml                             ← Foundry configuration
-├── .solhint.json                            ← Solhint linting rules
-└── .env.example                             ← Environment variable template
+├── audits/
+│   └── 2026-05-04_Aeternum-core_audit.pdf         ← Security audit report
+│
+├── docs/
+│   └── Aeternum-core_technical_doc.pdf            ← Protocol technical documentation
+│
+├── crytic-export/                                 ← Crytic/Echidna export artifacts
+│
+├── echidna-corpus/                                ← Echidna fuzzing corpus
+│
+├── lib/
+│   ├── forge-std                                  ← Foundry standard library
+│   └── openzeppelin-contracts                     ← OpenZeppelin contracts
+│
+├── echidna.config.yml                             ← Echidna fuzzer configuration
+├── foundry.lock                                   ← Foundry dependency lockfile
+├── foundry.toml                                   ← Foundry configuration
+├── .solhint.json                                  ← Solhint linting rules
+└── .env.example                                   ← Environment variable template
 ```
 
 ## Trust Model
