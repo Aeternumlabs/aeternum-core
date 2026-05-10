@@ -907,6 +907,76 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getAccumulatedFees(), feesBefore + annualFee);
     }
 
+    function test_renewSubscription_updatesInactivityPeriod_whenProvided() public {
+        _registerAliceFree(); // inactivityPeriod = 365 days
+
+        vm.prank(alice);
+        rm.renewSubscription{value: PREMIUM_FEE}(
+            IAeternumVault.SubscriptionPlan.Monthly,
+            PREMIUM_PERIOD // 180 days
+        );
+
+        // Period must change to the requested value
+        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, PREMIUM_PERIOD);
+        // Tier and expiry must also be set correctly
+        assertEq(uint256(rm.getRecoveryConfig(alice).tier), uint256(IAeternumVault.SubscriptionTier.Premium));
+    }
+
+    function test_renewSubscription_keepsExistingPeriod_whenZeroProvided() public {
+        _registerAliceFree(); // inactivityPeriod = 365 days
+        uint256 periodBefore = rm.getRecoveryConfig(alice).inactivityPeriod;
+
+        vm.prank(alice);
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, 0);
+
+        // Period must be unchanged when 0 is passed
+        assertEq(rm.getRecoveryConfig(alice).inactivityPeriod, periodBefore);
+    }
+
+    function test_renewSubscription_revertsIfNewPeriodBelowPremiumMin() public {
+        _registerAliceFree();
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
+        vm.prank(alice);
+        rm.renewSubscription{value: PREMIUM_FEE}(
+            IAeternumVault.SubscriptionPlan.Monthly,
+            PREMIUM_PERIOD - 1 // below Premium minimum
+        );
+    }
+
+    function test_renewSubscription_revertsIfNewPeriodExceedsMax() public {
+        _registerAliceFree();
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
+        vm.prank(alice);
+        rm.renewSubscription{value: PREMIUM_FEE}(
+            IAeternumVault.SubscriptionPlan.Monthly, rm.MAX_INACTIVITY_PERIOD() + 1
+        );
+    }
+
+    function test_renewSubscription_emitsInactivityPeriodUpdated_whenPeriodChanged() public {
+        _registerAliceFree();
+
+        vm.expectEmit(true, false, false, true);
+        emit InactivityPeriodUpdated(alice, PREMIUM_PERIOD);
+
+        vm.prank(alice);
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, PREMIUM_PERIOD);
+    }
+
+    function test_renewSubscription_doesNotEmitInactivityPeriodUpdated_whenZeroPassed() public {
+        _registerAliceFree();
+
+        // InactivityPeriodUpdated must NOT be emitted when newInactivityPeriod = 0
+        vm.recordLogs();
+        vm.prank(alice);
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, 0);
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 eventSig = keccak256("InactivityPeriodUpdated(address,uint256)");
+        for (uint256 i = 0; i < logs.length; i++) {
+            assertTrue(logs[i].topics[0] != eventSig, "InactivityPeriodUpdated must not fire when period unchanged");
+        }
+    }
+
     /*//////////////////////////////////////////////////////////////
                        9. CANCEL RECOVERY
     //////////////////////////////////////////////////////////////*/
