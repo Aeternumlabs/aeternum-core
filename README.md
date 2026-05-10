@@ -130,18 +130,18 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 
 ## Immutable variables
 
-| Immutable variable | Value for mainnet | Value for testnet | Description |
-|---|---|---|---|
-| `MIN_INACTIVITY_PERIOD_FREE` | 365 days | 10 minutes | Minimum inactivity period for Free tier |
-| `MIN_INACTIVITY_PERIOD_PREMIUM` | 180 days | 5 minutes | Minimum inactivity period for Premium tier |
-| `MAX_INACTIVITY_PERIOD` | 3650 days | 30 minutes | Hard ceiling on any inactivity period |
-| `SUBSCRIPTION_DURATION` | 30 days | 2.5 minutes | One Premium subscription period |
-| `PREMIUM_MONTHLY_FEE` | 0.002 ETH | 0.002 ETH | Fee for monthly Premium registration or renewal |
-| `PREMIUM_ANNUAL_FEE` | 0.02 ETH | 0.02 ETH | Fee for annual Premium subscription (equivalent to 10 months — 2 months free) |
-| `MAX_CHECK_UPKEEP_SIZE` | 5,000 | 100 | Maximum wallets scanned per `checkUpkeep` call (off-chain simulation, no gas constraint) |
-| `MAX_PERFORM_UPKEEP_SIZE` | 50 | 10 | Maximum wallets recovered per `performUpkeep` call (on-chain execution, gas-bound) |
-| `MAX_RECOVERY_ATTEMPTS` | 3 | 3 | Consecutive failed recovery attempts before a vault is permanently abandoned |
-| `CURSOR_ADVANCE_INTERVAL` | 1 hour | 30 seconds | Minimum seconds between idle cursor advances when no wallets are due |
+| Immutable variable | Value | Description |
+|---|---|---|
+| `MIN_INACTIVITY_PERIOD_FREE` | 365 days | Minimum inactivity period for Free tier |
+| `MIN_INACTIVITY_PERIOD_PREMIUM` | 180 days | Minimum inactivity period for Premium tier |
+| `MAX_INACTIVITY_PERIOD` | 3650 days | Hard ceiling on any inactivity period |
+| `SUBSCRIPTION_DURATION` | 30 days | One Premium subscription period |
+| `PREMIUM_MONTHLY_FEE` | 0.002 ETH | Fee for monthly Premium registration or renewal |
+| `PREMIUM_ANNUAL_FEE` | 0.02 ETH | Fee for annual Premium subscription (equivalent to 10 months — 2 months free) |
+| `MAX_CHECK_UPKEEP_SIZE` | 5,000 | Maximum wallets scanned per `checkUpkeep` call (off-chain simulation, no gas constraint) |
+| `MAX_PERFORM_UPKEEP_SIZE` | 50 | Maximum wallets recovered per `performUpkeep` call (on-chain execution, gas-bound) |
+| `MAX_RECOVERY_ATTEMPTS` | 3 | Consecutive failed recovery attempts before a vault is permanently abandoned |
+| `CURSOR_ADVANCE_INTERVAL` | 1 hour | Minimum time between idle cursor advances when no wallets are due |
 
 ## Dependencies
 
@@ -311,22 +311,9 @@ After deployment:
 1. Go to [automation.chain.link](https://automation.chain.link) and connect your wallet
 2. Click **Register new upkeep** → select **Custom Logic**
 3. Set the target contract to your deployed `AeternumVault` address
-4. Set `checkData` to `abi.encode(uint256(0), uint256(50))` for the first upkeep
+4. Leave `checkData` empty
 5. Set gas limit to `5000000`
 6. Fund the upkeep with LINK tokens from [faucets.chain.link](https://faucets.chain.link) (Sepolia)
-
-**Scaling to large user counts:**
-
-The contract uses pagination — each upkeep monitors a specific window of registered wallets. For 500,000 wallets, register multiple upkeeps with different `checkData` windows running in parallel:
-
-| Upkeep | checkData | Watches |
-|---|---|---|
-| Upkeep 1 | `abi.encode(0, 50)` | Wallets 0–49 |
-| Upkeep 2 | `abi.encode(50, 50)` | Wallets 50–99 |
-| Upkeep 3 | `abi.encode(100, 50)` | Wallets 100–149 |
-| ... | ... | ... |
-
-`checkUpkeep` runs off-chain and costs nothing. `performUpkeep` fires on-chain only when a wallet is actually due, deducting LINK from the upkeep balance.
 
 ## Security
 
@@ -337,7 +324,7 @@ The contract uses pagination — each upkeep monitors a specific window of regis
 - **No admin backdoors** — the treasury address can only withdraw subscription fees, never user balances
 - **Stale `performData` safety** — `_executeRecovery` re-validates every wallet before acting; stale or already-recovered entries are silently skipped
 - **O(1) registry removal** — swap-and-pop with 1-indexed mappings prevents array corruption during batch removals
-- **Failed recovery handling** — after `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is abandoned and balance remains self-claimable; the infinite retry loop is broken
+- **Failed recovery handling** — after `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is abandoned and balance remains self-claimable
 - **Direct ETH transfer rejection** — `receive()` explicitly reverts, preventing accidental ETH loss
 
 ### Known Considerations
