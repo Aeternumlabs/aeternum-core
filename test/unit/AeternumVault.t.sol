@@ -229,17 +229,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_constructor_revertsIfMaxPerformUpkeepSizeIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidConstructorParam.selector);
         new AeternumVault(
-            treasury,
-            365 days,
-            180 days,
-            3650 days,
-            30 days,
-            0.002 ether,
-            0.02 ether,
-            5000,
-            0, // ← maxPerformUpkeepSize = 0, should revert
-            3,
-            1 hours
+            treasury, 365 days, 180 days, 3650 days, 30 days, 0.002 ether, 0.02 ether, 5000, 0, 3, 1 hours
         );
     }
 
@@ -395,6 +385,35 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(alice);
         (bool sent,) = address(rm).call{value: 1 ether}("");
         (sent);
+    }
+
+    function test_register_revertsIfBackupIsAbandoned() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        assertTrue(rm.isBackupAbandoned(address(badBackup)));
+
+        // Bob also tries to use the same bad backup — should be blocked
+        vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -672,6 +691,34 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.updateBackupAddress(alice);
     }
 
+    function test_updateBackupAddress_revertsIfBackupIsAbandoned() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        // Alice re-registers fine with a new backup
+        vm.prank(alice);
+        rm.register{value: 0.5 ether}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        // But trying to update to the abandoned backup is blocked
+        vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
+        vm.prank(alice);
+        rm.updateBackupAddress(address(badBackup));
+    }
+
     function test_updateInactivityPeriod_freeUser_success() public {
         _registerAliceFree();
 
@@ -822,61 +869,42 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.renewSubscription{value: annualFee - 1}(IAeternumVault.SubscriptionPlan.Annual);
     }
 
-    function test_register_revertsIfBackupIsAbandoned() public {
-        RejectingReceiver badBackup = new RejectingReceiver();
+    function test_renewSubscription_monthly_revertsIfOverpaid() public {
+        _registerAliceFree();
+        // Sending even 1 wei over should revert — overspend goes to treasury otherwise
+        vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            address(badBackup),
-            FREE_PERIOD,
-            IAeternumVault.SubscriptionTier.Free,
-            IAeternumVault.SubscriptionPlan.Monthly
-        );
-
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
-
-        assertTrue(rm.isBackupAbandoned(address(badBackup)));
-
-        // Bob also tries to use the same bad backup — should be blocked
-        vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
-        vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(
-            address(badBackup),
-            FREE_PERIOD,
-            IAeternumVault.SubscriptionTier.Free,
-            IAeternumVault.SubscriptionPlan.Monthly
-        );
+        rm.renewSubscription{value: PREMIUM_FEE + 1}(IAeternumVault.SubscriptionPlan.Monthly);
     }
 
-    function test_updateBackupAddress_revertsIfBackupIsAbandoned() public {
-        RejectingReceiver badBackup = new RejectingReceiver();
+    function test_renewSubscription_annual_revertsIfOverpaid() public {
+        _registerAliceFree();
+        uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
+        vm.expectRevert(IAeternumVault.AeternumVault__InsufficientSubscriptionFee.selector);
         vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(
-            address(badBackup),
-            FREE_PERIOD,
-            IAeternumVault.SubscriptionTier.Free,
-            IAeternumVault.SubscriptionPlan.Monthly
-        );
+        rm.renewSubscription{value: annualFee + 1}(IAeternumVault.SubscriptionPlan.Annual);
+    }
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
+    function test_renewSubscription_monthly_exactPaymentAccumulatesExactFee() public {
+        _registerAliceFree();
+        uint256 feesBefore = rm.getAccumulatedFees();
 
-        // Alice re-registers fine with a new backup
         vm.prank(alice);
-        rm.register{value: 0.5 ether}(
-            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
-        );
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
 
-        // But trying to update to the abandoned backup is blocked
-        vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
+        // Exactly PREMIUM_FEE added — not a wei more
+        assertEq(rm.getAccumulatedFees(), feesBefore + PREMIUM_FEE);
+    }
+
+    function test_renewSubscription_annual_exactPaymentAccumulatesExactFee() public {
+        _registerAliceFree();
+        uint256 annualFee = rm.PREMIUM_ANNUAL_FEE();
+        uint256 feesBefore = rm.getAccumulatedFees();
+
         vm.prank(alice);
-        rm.updateBackupAddress(address(badBackup));
+        rm.renewSubscription{value: annualFee}(IAeternumVault.SubscriptionPlan.Annual);
+
+        assertEq(rm.getAccumulatedFees(), feesBefore + annualFee);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1045,9 +1073,7 @@ contract AeternumVaultTest is StdInvariant, Test {
                     SSECTION 10b — CURSOR BEHAVIOUR
     //////////////////////////////////////////////////////////////*/
 
-    /*//////////////////////////////////////////////////////////////
-                   CURSOR HOLD — due wallets in window
-    //////////////////////////////////////////////////////////////*/
+    //            CURSOR HOLD — due wallets in window
 
     function test_cursor_holdsPosition_whenDueWalletsExistInWindow() public {
         cv = _deployCursorVault(10, 3, 30 seconds);
@@ -1103,10 +1129,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(cv.getTotalRegistered(), 0);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                  CURSOR ADVANCE — idle window, interval elapsed
-    //////////////////////////////////////////////////////////////*/
-
+    //          CURSOR ADVANCE — idle window, interval elapsed
     function test_cursor_returnsFalse_whenWindowClear_andIntervalNotElapsed() public {
         cv = _deployCursorVault(10, 3, 30 seconds);
         _registerWallets(cv, 3, 0);
@@ -1156,10 +1179,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(cv.getLastCursorAdvance(), block.timestamp, "Advance timestamp must update on idle cursor advance");
     }
 
-    /*//////////////////////////////////////////////////////////////
-                    CURSOR WRAP-AROUND
-    //////////////////////////////////////////////////////////////*/
-
+    //                CURSOR WRAP-AROUND
     function test_cursor_wrapsToZero_whenEndOfRegistryReached() public {
         // check=4, perform=2 — register 6 wallets (2 full windows: [0-3], [4-5])
         cv = _deployCursorVault(4, 2, 30 seconds);
@@ -1205,10 +1225,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertTrue(true, "No revert when cursor exceeds total");
     }
 
-    /*//////////////////////////////////////////////////////////////
-           WINDOW FULLY CLEARED — cursor advances after
-    //////////////////////////////////////////////////////////////*/
-
+    //         WINDOW FULLY CLEARED — cursor advances after
     function test_cursor_advancesAfterWindowFullyCleared() public {
         cv = _deployCursorVault(6, 3, 30 seconds);
         _registerWallets(cv, 6, 0);
@@ -1335,10 +1352,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         }
     }
 
-    /*//////////////////////////////////////////////////////////////
-                      STALE DATA SAFETY
-    //////////////////////////////////////////////////////////////*/
-
+    //                STALE DATA SAFETY
     function test_staleData_skipsWallet_afterUserPings() public {
         _registerAliceFree();
         _warpPastInactivity(alice);
@@ -1429,10 +1443,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(bobBackup.balance, DEPOSIT_1_ETH);
     }
 
-    /*//////////////////////////////////////////////////////////////
-              CURSOR STATE IN PERFORM UPKEEP
-    //////////////////////////////////////////////////////////////*/
-
+    //            CURSOR STATE IN PERFORM UPKEEP
     function test_performUpkeep_setsCheckCursor_toNextCursor() public {
         cv = _deployCursorVault(4, 2, 30 seconds);
         _registerWallets(cv, 4, 0); // exactly one window
@@ -1626,6 +1637,157 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getTotalRegistered(), 0);
         assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
     }
+
+    function test_reregister_carriesOverAbandonedBalance_whenSkippingWithdrawal() public {
+        // Alice gets abandoned with 1 ETH in the vault
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
+
+        // Alice re-registers WITHOUT calling withdrawAll() first
+        // New deposit: 0.5 ETH. Expected balance: 1 ETH (carried) + 0.5 ETH (new) = 1.5 ETH
+        uint256 newDeposit = 0.5 ether;
+        vm.prank(alice);
+        rm.register{value: newDeposit}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        assertEq(cfg.balance, DEPOSIT_1_ETH + newDeposit, "Carried balance + new deposit must sum correctly");
+        assertTrue(cfg.isActive);
+        assertFalse(cfg.isAbandoned, "isAbandoned must be cleared on re-registration");
+        assertEq(cfg.backupAddress, aliceBackup);
+    }
+
+    function test_reregister_carriedBalance_isFullyRecoverableByNewBackup() public {
+        // Same setup: 1 ETH abandoned
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        // Re-register with good backup, adding 0.5 ETH — total vault balance = 1.5 ETH
+        uint256 newDeposit = 0.5 ether;
+        vm.prank(alice);
+        rm.register{value: newDeposit}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        // Warp past inactivity — recovery should send the FULL 1.5 ETH to the good backup
+        _warpPastInactivity(alice);
+        uint256 backupBefore = aliceBackup.balance;
+        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+        rm.performUpkeep(pd);
+
+        assertEq(
+            aliceBackup.balance,
+            backupBefore + DEPOSIT_1_ETH + newDeposit,
+            "New backup must receive carried + new deposit"
+        );
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+    }
+
+    function test_reregister_withZeroAbandonedBalance_worksNormally() public {
+        // Alice gets abandoned, then withdraws balance before re-registering
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        // Alice withdraws first — balance now 0
+        vm.prank(alice);
+        rm.withdrawAll();
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+
+        // Re-registers with 0.5 ETH — no carried balance, so only new deposit
+        uint256 newDeposit = 0.5 ether;
+        vm.prank(alice);
+        rm.register{value: newDeposit}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        assertEq(
+            rm.getRecoveryConfig(alice).balance,
+            newDeposit,
+            "No carry-over when abandoned balance was withdrawn before re-registration"
+        );
+    }
+
+    function test_reregister_carriedBalance_contractHoldsCorrectETH() public {
+        // Verify the contract's actual ETH balance covers carried + new deposit correctly
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(
+            address(badBackup),
+            FREE_PERIOD,
+            IAeternumVault.SubscriptionTier.Free,
+            IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        uint256 contractBalanceBefore = address(rm).balance; // still holds 1 ETH from abandoned
+
+        uint256 newDeposit = 0.5 ether;
+        vm.prank(alice);
+        rm.register{value: newDeposit}(
+            aliceBackup, FREE_PERIOD, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
+        );
+
+        // Contract now holds old 1 ETH + new 0.5 ETH
+        assertEq(
+            address(rm).balance,
+            contractBalanceBefore + newDeposit,
+            "Contract balance must reflect new deposit on top of existing carried ETH"
+        );
+
+        // config.balance must match what the contract actually holds for alice
+        assertEq(
+            rm.getRecoveryConfig(alice).balance,
+            address(rm).balance,
+            "Config balance must equal total contract ETH when alice is the only depositor"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                       12. TREASURY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
