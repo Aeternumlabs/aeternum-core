@@ -122,7 +122,7 @@ Chainlink Automation polls `checkUpkeep()` off-chain every ~12 seconds. When a v
 
 **5. Failed recovery**
 
-If a backup address cannot receive ETH (e.g. a contract that rejects transfers), the failure is counted. After `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is permanently deregistered but the balance remains fully accessible — the user can still `send()` or `withdrawAll()` at any time. Re-registration is blocked until the user resolves the backup address issue.
+If a backup address cannot receive ETH (e.g. a contract that rejects transfers), the failure is counted. After `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is deregistered but the balance remains fully accessible — the user can still `send()` or `withdrawAll()` at any time, and can re-register but with a new backup address.
 
 **6. Cancel anytime**
 
@@ -134,11 +134,14 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 |---|---|---|---|
 | `MIN_INACTIVITY_PERIOD_FREE` | 365 days | 10 minutes | Minimum inactivity period for Free tier |
 | `MIN_INACTIVITY_PERIOD_PREMIUM` | 180 days | 5 minutes | Minimum inactivity period for Premium tier |
-| `MAX_INACTIVITY_PERIOD` | 3650 days | 30 minutes | Hard ceiling |
-| `SUBSCRIPTION_DURATION` | 30 days | 2.5 minutes | Premium subscription window |
-| `PREMIUM_MONTHLY_FEE` | 0.002 ETH | 0.002 ETH | Fee required for Premium registration or renewal |
-| `MAX_BATCH_SIZE` | 50 | 50 | Maximum wallets processed per `performUpkeep` call |
-| `MAX_RECOVERY_ATTEMPTS` | 3 | 3 | Consecutive failures before vault is abandoned |
+| `MAX_INACTIVITY_PERIOD` | 3650 days | 30 minutes | Hard ceiling on any inactivity period |
+| `SUBSCRIPTION_DURATION` | 30 days | 2.5 minutes | One Premium subscription period |
+| `PREMIUM_MONTHLY_FEE` | 0.002 ETH | 0.002 ETH | Fee for monthly Premium registration or renewal |
+| `PREMIUM_ANNUAL_FEE` | 0.02 ETH | 0.02 ETH | Fee for annual Premium subscription (equivalent to 10 months — 2 months free) |
+| `MAX_CHECK_UPKEEP_SIZE` | 5,000 | 100 | Maximum wallets scanned per `checkUpkeep` call (off-chain simulation, no gas constraint) |
+| `MAX_PERFORM_UPKEEP_SIZE` | 50 | 10 | Maximum wallets recovered per `performUpkeep` call (on-chain execution, gas-bound) |
+| `MAX_RECOVERY_ATTEMPTS` | 3 | 3 | Consecutive failed recovery attempts before a vault is permanently abandoned |
+| `CURSOR_ADVANCE_INTERVAL` | 1 hour | 30 seconds | Minimum seconds between idle cursor advances when no wallets are due |
 
 ## Dependencies
 
