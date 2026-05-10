@@ -147,7 +147,7 @@ interface IAeternumVault {
 
     function updateInactivityPeriod(uint256 newPeriod) external;
 
-    function renewSubscription(SubscriptionPlan plan) external payable;
+    function renewSubscription(SubscriptionPlan plan, uint256 newInactivityPeriod) external payable;
 
     function cancelRecovery() external;
 

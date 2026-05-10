@@ -460,16 +460,23 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     }
 
     /**
-     * @notice Purchase or renew a Premium subscription.
-     * @dev    If the caller is already on Premium with a future expiry, the new period
-     *         is appended to the existing expiry (stacking). Otherwise, a new 30-day
-     *         window starts from `block.timestamp`.
-     *         Any ETH above PREMIUM_MONTHLY_FEE is accepted and accumulated as fees
-     *         (useful for pre-paying multiple months — caller bears responsibility for
-     *         amount sent).
-     *         Emits {SubscriptionRenewed} and {ActivityPinged}.
+     * @notice Purchase or renew a Premium subscription, optionally updating the inactivity period
+     *         in the same transaction.
+     *
+     * @dev    Passing `newInactivityPeriod = 0` preserves the caller's existing period.
+     *         Passing a non-zero value updates the period, subject to Premium-tier validation.
+     *         This allows Free users upgrading to Premium to immediately benefit from the
+     *         shorter inactivity window without a second `updateInactivityPeriod()` call.
+     *
+     * @param plan                New or renewed subscription plan (Monthly or Annual).
+     * @param newInactivityPeriod New inactivity period in seconds, or 0 to keep existing.
      */
-    function renewSubscription(SubscriptionPlan plan) external payable onlyRegistered nonReentrant {
+    function renewSubscription(SubscriptionPlan plan, uint256 newInactivityPeriod)
+        external
+        payable
+        onlyRegistered
+        nonReentrant
+    {
         uint256 requiredFee = (plan == SubscriptionPlan.Annual) ? PREMIUM_ANNUAL_FEE : PREMIUM_MONTHLY_FEE;
 
         uint256 duration = (plan == SubscriptionPlan.Annual) ? 12 * SUBSCRIPTION_DURATION : SUBSCRIPTION_DURATION;
@@ -487,6 +494,16 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         config.subscriptionExpiry = newExpiry;
         config.lastActivity = block.timestamp;
         s_accumulatedFees += requiredFee;
+
+        // Optionally update inactivity period in the same transaction.
+        // Validated against Premium minimum since subscription is now active.
+        if (newInactivityPeriod != 0) {
+            if (newInactivityPeriod < MIN_INACTIVITY_PERIOD_PREMIUM || newInactivityPeriod > MAX_INACTIVITY_PERIOD) {
+                revert AeternumVault__InvalidInactivityPeriod();
+            }
+            config.inactivityPeriod = newInactivityPeriod;
+            emit InactivityPeriodUpdated(msg.sender, newInactivityPeriod);
+        }
 
         emit SubscriptionRenewed(msg.sender, SubscriptionTier.Premium, newExpiry);
         emit ActivityPinged(msg.sender, block.timestamp);
