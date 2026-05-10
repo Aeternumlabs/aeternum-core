@@ -1116,21 +1116,20 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertFalse(needed, "Should return false before interval elapses");
     }
 
-function test_cursor_advancesWithEmptyCandidates_whenWindowClear_andIntervalElapsed() public {
-    cv = _deployCursorVault(10, 3, 30 seconds);
-    _registerWallets(cv, 3, 0);
+    function test_cursor_advancesWithEmptyCandidates_whenWindowClear_andIntervalElapsed() public {
+        cv = _deployCursorVault(10, 3, 30 seconds);
+        _registerWallets(cv, 3, 0);
 
-    vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
+        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
 
-    (bool needed, bytes memory performData) = cv.checkUpkeep(bytes(""));
-    assertTrue(needed, "Should advance cursor after interval");
+        (bool needed, bytes memory performData) = cv.checkUpkeep(bytes(""));
+        assertTrue(needed, "Should advance cursor after interval");
 
-    (address[] memory candidates,, bool isIdleAdvance) =
-        abi.decode(performData, (address[], uint256, bool));
+        (address[] memory candidates,, bool isIdleAdvance) = abi.decode(performData, (address[], uint256, bool));
 
-    assertEq(candidates.length, 0, "No due wallets - candidates should be empty");
-    assertTrue(isIdleAdvance, "Should be flagged as an idle advance");
-}
+        assertEq(candidates.length, 0, "No due wallets - candidates should be empty");
+        assertTrue(isIdleAdvance, "Should be flagged as an idle advance");
+    }
 
     function test_cursor_advancesToNextWindow_afterIdleAdvance() public {
         cv = _deployCursorVault(4, 2, 30 seconds); // window size 4
