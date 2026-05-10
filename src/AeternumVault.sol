@@ -280,7 +280,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
                 subscriptionPayment = PREMIUM_ANNUAL_FEE;
                 subscriptionExpiry = block.timestamp + (12 * SUBSCRIPTION_DURATION);
             } else {
-                // Monthly (default)
                 if (msg.value < PREMIUM_MONTHLY_FEE) revert AeternumVault__InsufficientSubscriptionFee();
                 subscriptionPayment = PREMIUM_MONTHLY_FEE;
                 subscriptionExpiry = block.timestamp + SUBSCRIPTION_DURATION;
@@ -297,7 +296,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 depositAmount = msg.value - subscriptionPayment;
 
         // Effects
-
         s_configs[msg.sender] = RecoveryConfig({
             backupAddress: backupAddress,
             inactivityPeriod: inactivityPeriod,
