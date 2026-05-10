@@ -790,7 +790,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerAliceFree();
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, 0);
 
         IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertEq(uint256(cfg.tier), uint256(IAeternumVault.SubscriptionTier.Premium));
@@ -802,7 +802,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 currentExpiry = rm.getRecoveryConfig(alice).subscriptionExpiry;
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, 0);
 
         assertEq(rm.getRecoveryConfig(alice).subscriptionExpiry, currentExpiry + 30 days);
     }
@@ -812,7 +812,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 feesBefore = rm.getAccumulatedFees();
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, 0);
 
         assertEq(rm.getAccumulatedFees(), feesBefore + PREMIUM_FEE);
     }
@@ -832,7 +832,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 expectedExpiry = block.timestamp + 30 days;
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, 0);
 
         // New expiry should start from now, not stack on old expired expiry
         assertEq(rm.getRecoveryConfig(alice).subscriptionExpiry, expectedExpiry);
@@ -890,7 +890,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         uint256 feesBefore = rm.getAccumulatedFees();
 
         vm.prank(alice);
-        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly);
+        rm.renewSubscription{value: PREMIUM_FEE}(IAeternumVault.SubscriptionPlan.Monthly, 0);
 
         // Exactly PREMIUM_FEE added — not a wei more
         assertEq(rm.getAccumulatedFees(), feesBefore + PREMIUM_FEE);
