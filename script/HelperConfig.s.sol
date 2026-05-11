@@ -121,13 +121,17 @@ contract HelperConfig is Script {
     /**
      * @dev Sepolia testnet.
      *
-     *      Short inactivity periods for rapid testnet iteration.
-     *      MAX_CHECK_UPKEEP_SIZE kept small (100) so test wallets are found quickly.
-     *      MAX_PERFORM_UPKEEP_SIZE = 10 to make batching behaviour testable with
-     *      a small number of registered wallets.
-     *      CURSOR_ADVANCE_INTERVAL = 30 seconds for fast cursor cycling during QA.
+     *      Mirrors mainnet automation parameters exactly (MAX_CHECK_UPKEEP_SIZE = 5000,
+     *      MAX_PERFORM_UPKEEP_SIZE = 50, CURSOR_ADVANCE_INTERVAL = 1 hour) so that
+     *      Chainlink Automation behaviour observed on Sepolia is a faithful preview
+     *      of mainnet execution — same batch sizing, same cursor cadence, same gas profile.
      *
-     *      Treasury sourced from SEPOLIA_TREASURY env variable.
+     *      Inactivity periods are intentionally shortened (Free: 10 min, Premium: 5 min)
+     *      so recovery flows can be triggered and observed within a single QA session
+     *      without waiting 180 – 365 days. All other subscription and fee values are
+     *      identical to mainnet.
+     *
+     *      Treasury sourced from the SEPOLIA_TREASURY environment variable.
      */
     function _getSepoliaConfig() internal view returns (VaultConfig memory) {
         return VaultConfig({
