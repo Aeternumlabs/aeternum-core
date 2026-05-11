@@ -8,38 +8,14 @@ pragma solidity ^0.8.24;
  *         Defines all public/external types, events, errors, and function signatures.
  */
 interface IAeternumVault {
-    /*//////////////////////////////////////////////////////////////
-                                 ENUMS
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @notice Subscription tiers that govern monitoring frequency and minimum inactivity period.
-     * @param Free    180-day minimum inactivity period; standard monitoring.
-     * @param Premium  30-day minimum inactivity period; priority monitoring.
-     */
-    enum SubscriptionTier {
-        Free,
-        Premium
-    }
-
-    /// @notice Subscription payment plan options for Premium tier.
-    enum SubscriptionPlan {
-        Monthly, // Pay PREMIUM_MONTHLY_FEE for SUBSCRIPTION_DURATION
-        Annual // Pay PREMIUM_ANNUAL_FEE for 12x SUBSCRIPTION_DURATION (discounted)
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                STRUCTS
-    //////////////////////////////////////////////////////////////*/
-
+   
+    /// STRUCTS
     /**
      * @notice All configuration and state for a single registered wallet.
      * @param backupAddress      Destination address for recovered funds.
      * @param inactivityPeriod   Seconds of inactivity before recovery is triggered.
      * @param lastActivity       Unix timestamp of the user's most recent on-chain interaction.
      * @param balance            ETH (in wei) held in escrow for this wallet.
-     * @param tier               Current subscription tier.
-     * @param subscriptionExpiry Unix timestamp when the Premium subscription expires (0 = Free).
      * @param isActive           Whether this configuration is live and being monitored.
      */
     struct RecoveryConfig {
@@ -47,20 +23,15 @@ interface IAeternumVault {
         uint256 inactivityPeriod;
         uint256 lastActivity;
         uint256 balance;
-        SubscriptionTier tier;
-        uint256 subscriptionExpiry;
         bool isActive;
         uint8 failedRecoveryAttempts;
         bool isAbandoned;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                                 EVENTS
-    //////////////////////////////////////////////////////////////*/
-
+    /// EVENTS
     /// @notice Emitted when a wallet is successfully registered for recovery.
     event RecoveryRegistered(
-        address indexed wallet, address indexed backupAddress, uint256 inactivityPeriod, SubscriptionTier tier
+        address indexed wallet, address indexed backupAddress, uint256 inactivityPeriod
     );
 
     /// @notice Emitted whenever the inactivity timer is reset (ping, deposit, withdraw, config update).
@@ -95,43 +66,25 @@ interface IAeternumVault {
     /// @notice Emitted when the inactivity period is changed.
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
 
-    /// @notice Emitted when a Premium subscription is created or renewed.
-    event SubscriptionRenewed(address indexed wallet, SubscriptionTier tier, uint256 expiresAt);
-
-    /// @notice Emitted when treasury address is updated.
-    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
-
-    /// @notice Emitted when accumulated subscription fees are withdrawn to the treasury.
-    event SubscriptionFeesWithdrawn(address indexed treasury, uint256 amount);
-
-    /*//////////////////////////////////////////////////////////////
-                             CUSTOM ERRORS
-    //////////////////////////////////////////////////////////////*/
-
+    /// CUSTOM ERRORS
     error AeternumVault__AlreadyRegistered();
     error AeternumVault__NotRegistered();
     error AeternumVault__InvalidBackupAddress();
     error AeternumVault__ZeroAddress();
     error AeternumVault__InvalidInactivityPeriod();
-    error AeternumVault__InvalidSubscriptionDuration();
-    error AeternumVault__InvalidPremiumPayment();
     error AeternumVault__MaxPerformUpkeepSizeExceeded();
     error AeternumVault__MaxRecoveryAttemptsExceeded();
     error AeternumVault__TransferFailed();
     error AeternumVault__NotAuthorized();
-    error AeternumVault__InsufficientSubscriptionFee();
     error AeternumVault__NothingToWithdraw();
     error AeternumVault__InsufficientBalance();
     error AeternumVault__DirectTransferNotAllowed();
     error AeternumVault__WalletAbandoned();
     error AeternumVault__InvalidConstructorParam();
 
-    /*//////////////////////////////////////////////////////////////
-                          FUNCTION SIGNATURES
-    //////////////////////////////////////////////////////////////*/
-
+    /// FUNCTION SIGNATURES
     // --- User-facing ---
-    function register(address backupAddress, uint256 inactivityPeriod, SubscriptionTier tier, SubscriptionPlan plan)
+    function register(address backupAddress, uint256 inactivityPeriod)
         external
         payable;
 
@@ -147,8 +100,6 @@ interface IAeternumVault {
 
     function updateInactivityPeriod(uint256 newPeriod) external;
 
-    function renewSubscription(SubscriptionPlan plan, uint256 newInactivityPeriod) external payable;
-
     function cancelRecovery() external;
 
     // --- Automation ---
@@ -162,11 +113,6 @@ interface IAeternumVault {
 
     function performUpkeep(bytes calldata performData) external;
 
-    // --- Treasury ---
-    function withdrawSubscriptionFees() external;
-
-    function updateTreasury(address newTreasury) external;
-
     // --- View ---
     function isRegistered(address wallet) external view returns (bool);
 
@@ -177,10 +123,6 @@ interface IAeternumVault {
     function getTimeUntilRecovery(address wallet) external view returns (uint256);
 
     function getTotalRegistered() external view returns (uint256);
-
-    function getAccumulatedFees() external view returns (uint256);
-
-    function getTreasury() external view returns (address);
 
     function getRegisteredWallets(uint256 start, uint256 end) external view returns (address[] memory);
 
