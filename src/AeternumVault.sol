@@ -28,16 +28,9 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *         TRUST MODEL
  *         ─────────────────────────────────────────────────────────────────────
  *         • No admin can pause recovery, redirect funds, or change user configs.
- *         • Treasury address can ONLY withdraw subscription fees — never user funds.
  *         • Recovery execution is permissionless via Chainlink Automation.
  *         • All state changes follow the Checks-Effects-Interactions (CEI) pattern.
  *         • ReentrancyGuard provides a secondary reentrancy defence layer.
- *
- *         SUBSCRIPTION TIERS
- *         ─────────────────────────────────────────────────────────────────────
- *         • Free    – minimum inactivity period of 365 days.
- *         • Premium – minimum inactivity period of 180 days; requires PREMIUM_MONTHLY_FEE
- *                     per 30-day subscription period.
  *
  *         SECURITY CONSIDERATIONS
  *         ─────────────────────────────────────────────────────────────────────
@@ -51,15 +44,9 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *           clear error, preventing accidental ETH loss.
  */
 contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleInterface {
-    /*//////////////////////////////////////////////////////////////
-                            IMMUTABLES
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Minimum inactivity period allowed for Free tier users.
-    uint256 public immutable MIN_INACTIVITY_PERIOD_FREE;
-
-    /// @notice Minimum inactivity period allowed for Premium tier users.
-    uint256 public immutable MIN_INACTIVITY_PERIOD_PREMIUM;
+    /// --- IMMUTABLES ---
+    /// @notice Minimum inactivity period allowed.
+    uint256 public immutable MIN_INACTIVITY_PERIOD;
 
     /// @notice Hard ceiling on any inactivity period (prevents permanent lock-up).
     uint256 public immutable MAX_INACTIVITY_PERIOD;

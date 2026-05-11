@@ -9,7 +9,7 @@ pragma solidity ^0.8.24;
  */
 interface IAeternumVault {
    
-    /// STRUCTS
+    /// --- STRUCTS ---
     /**
      * @notice All configuration and state for a single registered wallet.
      * @param backupAddress      Destination address for recovered funds.
@@ -28,7 +28,7 @@ interface IAeternumVault {
         bool isAbandoned;
     }
 
-    /// EVENTS
+    /// --- EVENTS ---
     /// @notice Emitted when a wallet is successfully registered for recovery.
     event RecoveryRegistered(
         address indexed wallet, address indexed backupAddress, uint256 inactivityPeriod
@@ -66,7 +66,7 @@ interface IAeternumVault {
     /// @notice Emitted when the inactivity period is changed.
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
 
-    /// CUSTOM ERRORS
+    /// --- CUSTOM ERRORS ---
     error AeternumVault__AlreadyRegistered();
     error AeternumVault__NotRegistered();
     error AeternumVault__InvalidBackupAddress();
@@ -82,8 +82,8 @@ interface IAeternumVault {
     error AeternumVault__WalletAbandoned();
     error AeternumVault__InvalidConstructorParam();
 
-    /// FUNCTION SIGNATURES
-    // --- User-facing ---
+    /// --- FUNCTION SIGNATURES ---
+    // User-facing
     function register(address backupAddress, uint256 inactivityPeriod)
         external
         payable;
@@ -102,7 +102,7 @@ interface IAeternumVault {
 
     function cancelRecovery() external;
 
-    // --- Automation ---
+    // Automation
     function MAX_CHECK_UPKEEP_SIZE() external view returns (uint256);
 
     function MAX_PERFORM_UPKEEP_SIZE() external view returns (uint256);
@@ -113,7 +113,7 @@ interface IAeternumVault {
 
     function performUpkeep(bytes calldata performData) external;
 
-    // --- View ---
+    // View
     function isRegistered(address wallet) external view returns (bool);
 
     function getRecoveryConfig(address wallet) external view returns (RecoveryConfig memory);
