@@ -146,6 +146,12 @@ contract AeternumVaultTest is StdInvariant, Test {
         new AeternumVault(180 days, 3650 days, 5000, 50, 0, 1 hours);
     }
 
+    function test_constructor_revertsIfPerformSizeExceedsCheckSize() public {
+        // perform(10) > check(5) — violates the sizing invariant
+        vm.expectRevert(IAeternumVault.AeternumVault__MaxPerformUpkeepSizeExceeded.selector);
+        new AeternumVault(365 days, 3650 days, 5, 10, 3, 1 hours);
+    }
+
     /// SECTION 2. --- REGISTER — SUCCESS PATHS ---
     function test_register_storesConfig() public {
         _registerAlice();
@@ -656,6 +662,34 @@ contract AeternumVaultTest is StdInvariant, Test {
         rejecter.doCancelRecovery();
     }
 
+    function test_cancelRecovery_onAbandonedWallet_refundsAndClears() public {
+        // Reach abandonment so wallet is removed from registry (s_walletIndexPlusOne = 0)
+        // but balance is preserved and onlyRegistered still passes (isAbandoned=true).
+        // cancelRecovery() calls _removeFromRegistry() which hits the indexPlusOne==0 early return.
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
+
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(alice);
+            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+            rm.performUpkeep(pd);
+        }
+
+        assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
+        assertEq(rm.getTotalRegistered(), 0); // already removed from registry
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH); // balance preserved
+
+        uint256 aliceBalanceBefore = alice.balance;
+
+        vm.prank(alice);
+        rm.cancelRecovery(); // _removeFromRegistry → indexPlusOne=0 → early return, transfer still works
+
+        assertEq(alice.balance, aliceBalanceBefore + DEPOSIT_1_ETH);
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+        assertEq(rm.getTotalRegistered(), 0);
+    }
+
     /// SECTION 9. --- CHECK UPKEEP ---
     function test_checkUpkeep_returnsFalseIfRegistryEmpty() public view {
         (bool needed,) = rm.checkUpkeep(bytes(""));
@@ -1136,6 +1170,25 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertTrue(rm.isBackupAbandoned(address(badBackup)));
     }
 
+    function test_executeRecovery_skipsWallet_withZeroBalance() public {
+        // Register with 0 ETH: isActive=true but balance=0.
+        // checkUpkeep will never include this wallet (balance > 0 required).
+        // Manually construct performData to force _executeRecovery to hit the balance==0 guard.
+        vm.prank(alice);
+        rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
+
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        address[] memory candidates = new address[](1);
+        candidates[0] = alice;
+        bytes memory pd = abi.encode(candidates, uint256(0), false);
+
+        rm.performUpkeep(pd); // hits _executeRecovery → balance==0 guard → return
+
+        assertTrue(rm.getRecoveryConfig(alice).isActive);
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+    }
+
     function test_executeRecovery_emitsRecoveryAbandoned_atMaxAttempts() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
@@ -1304,6 +1357,19 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertTrue(rm.isRecoveryDue(alice));
     }
 
+    function test_isRecoveryDue_falseForUnregisteredWallet() public view {
+        // isActive = false short-circuits the entire condition
+        assertFalse(rm.isRecoveryDue(alice));
+    }
+
+    function test_isRecoveryDue_falseForZeroBalance() public {
+        // isActive = true but balance = 0 — second condition fails
+        vm.prank(alice);
+        rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+        assertFalse(rm.isRecoveryDue(alice));
+    }
+
     function test_getTimeUntilRecovery_returnsCorrectValue() public {
         _registerAlice();
         uint256 elapsed = 30 days;
@@ -1316,6 +1382,18 @@ contract AeternumVaultTest is StdInvariant, Test {
     function test_getTimeUntilRecovery_returnsZeroWhenDue() public {
         _registerAlice();
         _warpPastInactivity(alice);
+        assertEq(rm.getTimeUntilRecovery(alice), 0);
+    }
+
+    function test_getTimeUntilRecovery_returnsZeroIfNotRegistered() public view {
+        // !config.isActive branch — never registered
+        assertEq(rm.getTimeUntilRecovery(alice), 0);
+    }
+
+    function test_getTimeUntilRecovery_returnsZeroIfZeroBalance() public {
+        // isActive=true but balance=0 branch
+        vm.prank(alice);
+        rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
         assertEq(rm.getTimeUntilRecovery(alice), 0);
     }
 
