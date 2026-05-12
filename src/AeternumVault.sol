@@ -223,7 +223,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     function deposit() external payable onlyRegistered nonReentrant {
         // Check
-        if (msg.value == 0) revert AeternumVault__InsufficientBalance();
+        if (msg.value == 0) revert AeternumVault__InvalidAmount();
 
         // Effects
         s_configs[msg.sender].balance += msg.value;
@@ -266,7 +266,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *         Uses CEI: balance updated before the external ETH transfer.
      *         Emits {Sent} and {ActivityPinged}.
      *
-     * @param to     Recipient address. Must not be zero.
+     * @param to     Recipient address. Must not be zero address.
      * @param amount Amount to send in wei. Must be ≤ caller's vault balance.
      */
     function send(address to, uint256 amount) external onlyRegistered nonReentrant {
