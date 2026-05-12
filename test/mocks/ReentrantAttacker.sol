@@ -33,9 +33,7 @@ contract ReentrantAttacker {
     /// @notice Register the attacker as the primary wallet with a specified backup address.
     function registerAsWallet(uint256 inactivityPeriod, address backup) external payable {
         if (msg.sender != owner) revert Attacker__Unauthorized();
-        target.register{value: msg.value}(
-            backup, inactivityPeriod, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
-        );
+        target.register{value: msg.value}(backup, inactivityPeriod);
     }
 
     /// @notice Toggle the reentrant attack on receipt of ETH.
@@ -58,10 +56,7 @@ contract ReentrantAttacker {
             try target.performUpkeep(abi.encode(new address[](0))) {} catch {}
 
             // Attempt 2: try to register a new config mid-execution
-            try target.register{value: 0}(
-                owner, 180 days, IAeternumVault.SubscriptionTier.Free, IAeternumVault.SubscriptionPlan.Monthly
-            ) {}
-                catch {}
+            try target.register{value: 0}(owner, 180 days) {} catch {}
         }
     }
 
