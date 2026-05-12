@@ -8,7 +8,7 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
 /**
  * @title  AeternumVault
  * @author Ndubuisi Ugwuja
- * @notice Trustless, non-custodial smart wallet vault with built-in automated funds recovery.
+ * @notice Trustless smart wallet vault with built-in automated funds recovery.
  *
  *
  * @dev    SYSTEM OVERVIEW
