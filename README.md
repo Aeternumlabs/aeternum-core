@@ -5,7 +5,7 @@
 [![Slither](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/slither.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/slither.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-A trustless, non-custodial smart wallet vault with built-in automated ETH recovery.
+A trustless smart wallet vault with built-in automated ETH recovery.
 
 Aeternum Core lets users store ETH in a self-sovereign vault, send and receive funds like a normal wallet, and configure a backup address with an inactivity timer. If the user goes silent beyond their chosen period — lost keys, death, incapacitation — Chainlink Automation transfers their ETH to the backup address automatically. No custodians. No admin backdoors. Just code.
 
@@ -35,15 +35,11 @@ AeternumVault
 │   ├── balance          — ETH held in escrow
 │   ├── backupAddress    — recovery destination
 │   ├── inactivityPeriod — seconds before recovery triggers
-│   ├── lastActivity     — timestamp of last on-chain interaction
-│   └── subscriptionTier — Free or Premium
+│   └── lastActivity     — timestamp of last on-chain interaction
 │
-├── Chainlink Automation
-│   ├── checkUpkeep()    — off-chain simulation, finds due wallets
-│   └── performUpkeep()  — on-chain execution, transfers ETH to backup
-│
-└── Treasury
-    └── withdrawSubscriptionFees() — subscription revenue only
+└── Chainlink Automation
+    ├── checkUpkeep()    — off-chain simulation, finds due wallets
+    └── performUpkeep()  — on-chain execution, transfers ETH to backup
 ```
 
 ## Repository Structure
@@ -64,8 +60,7 @@ aeternum-core/
 │   └── mocks/
 │       ├── ReentrantAttacker.sol                  ← Reentrancy security test helper
 │       ├── RejectingReceiver.sol                  ← Failed recovery simulation helper
-│       ├── RejectingCallerMock.sol                ← Transfer failure simulation (withdrawAll/cancel)
-│       └── RejectingTreasuryMock.sol              ← Treasury transfer failure simulation
+│       └── RejectingCallerMock.sol                ← Transfer failure simulation (withdrawAll/cancel)       
 │
 ├── script/
 │   ├── Deploy.s.sol                               ← Deployment script with post-deploy checks
@@ -97,7 +92,6 @@ aeternum-core/
 | Actor | Can Do | Cannot Do |
 |---|---|---|
 | **User** | Register, deposit, send, withdrawAll, ping, update config, cancel | Access other users' funds |
-| **Treasury** | Withdraw accumulated subscription fees | Touch user vault balances |
 | **Chainlink Automation** | Call `performUpkeep` when inactivity conditions are met | Alter configs or redirect funds |
 | **Anyone** | Call `checkUpkeep` (read-only, off-chain simulation) | Trigger recovery before period elapses |
 | **No one** | — | Pause recovery, upgrade the contract, or access user funds |
@@ -106,7 +100,7 @@ aeternum-core/
 
 **1. Register**
 
-The user calls `register()` with a backup address, inactivity period, and subscription tier. ETH deposited at registration goes directly into their vault.
+The user calls `register()` with a backup address and inactivity period. ETH deposited at registration goes directly into their vault.
 
 **2. Use the vault**
 
@@ -132,12 +126,8 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 
 | Immutable variable | Value | Description |
 |---|---|---|
-| `MIN_INACTIVITY_PERIOD_FREE` | 365 days | Minimum inactivity period for Free tier |
-| `MIN_INACTIVITY_PERIOD_PREMIUM` | 180 days | Minimum inactivity period for Premium tier |
-| `MAX_INACTIVITY_PERIOD` | 3650 days | Hard ceiling on any inactivity period |
-| `SUBSCRIPTION_DURATION` | 30 days | One Premium subscription period |
-| `PREMIUM_MONTHLY_FEE` | 0.002 ETH | Fee for monthly Premium registration or renewal |
-| `PREMIUM_ANNUAL_FEE` | 0.02 ETH | Fee for annual Premium subscription (equivalent to 10 months — 2 months free) |
+| `MIN_INACTIVITY_PERIOD` | 180 days | Minimum inactivity period users are allowed to configure|
+| `MAX_INACTIVITY_PERIOD` | 3650 days | Maximum inactivity period allowed|
 | `MAX_CHECK_UPKEEP_SIZE` | 5,000 | Maximum wallets scanned per `checkUpkeep` call (off-chain simulation, no gas constraint) |
 | `MAX_PERFORM_UPKEEP_SIZE` | 50 | Maximum wallets recovered per `performUpkeep` call (on-chain execution, gas-bound) |
 | `MAX_RECOVERY_ATTEMPTS` | 3 | Consecutive failed recovery attempts before a vault is permanently abandoned |
@@ -312,7 +302,7 @@ After deployment:
 2. Click **Register new upkeep** → select **Custom Logic**
 3. Set the target contract to your deployed `AeternumVault` address
 4. Leave `checkData` empty
-5. Set gas limit to `5000000`
+5. Set gas limit to `500000`
 6. Fund the upkeep with LINK tokens from [faucets.chain.link](https://faucets.chain.link) (Sepolia)
 
 ## Security
@@ -321,7 +311,7 @@ After deployment:
 
 - **Checks-Effects-Interactions (CEI)** enforced on all ETH-transferring paths
 - **ReentrancyGuard** applied as a secondary defence layer on all state-changing functions
-- **No admin backdoors** — the treasury address can only withdraw subscription fees, never user balances
+- **No admin backdoors** — the contract contains no owner or privileged roles capable of pausing recovery, redirecting funds, or accessing user balances
 - **Stale `performData` safety** — `_executeRecovery` re-validates every wallet before acting; stale or already-recovered entries are silently skipped
 - **O(1) registry removal** — swap-and-pop with 1-indexed mappings prevents array corruption during batch removals
 - **Failed recovery handling** — after `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is abandoned and balance remains self-claimable
@@ -330,7 +320,7 @@ After deployment:
 ### Known Considerations
 
 - `block.timestamp` is used for inactivity comparisons. Validator manipulation is bounded to ~12 seconds — negligible for inactivity periods measured in days and months.
-- External ETH transfers inside a loop in `performUpkeep` are acknowledged (Slither: calls-loop). Mitigated by `nonReentrant`, CEI pattern, re-validation per iteration, and `MAX_BATCH_SIZE` cap.
+- External ETH transfers inside a loop in `performUpkeep` are acknowledged (Slither: calls-loop). Mitigated by `nonReentrant`, CEI pattern, re-validation per iteration, and `MAX_PERFORM_UPKEEP_SIZE`
 - `_executeRecovery` restores state after a failed ETH transfer (Slither: reentrancy-eth). 
   Silenced and acknowledged — exploitation is prevented by `nonReentrant` on `performUpkeep`, 
   balance zeroing before the call, and permanent abandonment after 3 consecutive failures.
