@@ -158,7 +158,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         if (cursorAdvanceInterval_ == 0) revert AeternumVault__InvalidConstructorParam();
 
         // Assignments
-        MIN_INACTIVITY_PERIOD = minInactivityFree_;
+        MIN_INACTIVITY_PERIOD = minInactivityPeriod_;
         MAX_INACTIVITY_PERIOD = maxInactivityPeriod_;
         MAX_CHECK_UPKEEP_SIZE = maxCheckUpkeepSize_;
         MAX_PERFORM_UPKEEP_SIZE = maxPerformUpkeepSize_;
@@ -244,7 +244,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 amount = config.balance;
 
         // Check
-        if (amount == 0) revert AeternumVault__NothingToWithdraw();
+        if (amount == 0) revert AeternumVault__InvalidAmount();
 
         // Effects
         config.balance = 0;
@@ -272,7 +272,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     function send(address to, uint256 amount) external onlyRegistered nonReentrant {
         // Checks
         if (to == address(0)) revert AeternumVault__InvalidBackupAddress();
-        if (amount == 0) revert AeternumVault__NothingToWithdraw();
+        if (amount == 0) revert AeternumVault__InvalidAmount();
 
         RecoveryConfig storage config = s_configs[msg.sender];
         if (amount > config.balance) revert AeternumVault__InsufficientBalance();
@@ -566,16 +566,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         return s_abandonedBackupAddresses[backup];
     }
 
-    /// @notice Returns the total subscription fees not yet withdrawn.
-    function getAccumulatedFees() external view returns (uint256) {
-        return s_accumulatedFees;
-    }
-
-    /// @notice Returns the current treasury address.
-    function getTreasury() external view returns (address) {
-        return s_treasury;
-    }
-
     /**
      * @notice Returns a paginated slice of registered wallet addresses.
      * @param start Inclusive start index.
@@ -611,24 +601,14 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         return s_lastCursorAdvance;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         INTERNAL FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- INTERNAL FUNCTIONS ---
     /**
-     * @notice Returns the effective inactivity period for a wallet at the current timestamp.
-     * @dev    If the wallet's Premium subscription has expired and the stored inactivity
-     *         period is below the Free minimum, the Free minimum is enforced.
-     *         This prevents expired Premium users from retaining sub-Free-tier periods
-     *         indefinitely without renewing.
+     * @notice Returns the configured inactivity period for a wallet.
+     * @dev    The inactivity period is fixed at registration or update time.
+     *
      * @param config The wallet's recovery config storage pointer.
      */
     function _effectiveInactivityPeriod(RecoveryConfig storage config) internal view returns (uint256) {
-        bool premiumActive = config.tier == SubscriptionTier.Premium && block.timestamp <= config.subscriptionExpiry;
-
-        if (!premiumActive && config.inactivityPeriod < MIN_INACTIVITY_PERIOD_FREE) {
-            return MIN_INACTIVITY_PERIOD_FREE;
-        }
         return config.inactivityPeriod;
     }
 
@@ -752,10 +732,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         delete s_walletIndexPlusOne[wallet];
     }
 
-    /*//////////////////////////////////////////////////////////////
-                             FALLBACK / RECEIVE
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- FALLBACK / RECEIVE ---
     /**
      * @notice Rejects plain ETH transfers to prevent accidental fund loss
      * @dev Users must interact through `register()` or `deposit()`.

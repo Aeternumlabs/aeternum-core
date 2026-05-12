@@ -73,7 +73,7 @@ interface IAeternumVault {
     error AeternumVault__MaxRecoveryAttemptsExceeded();
     error AeternumVault__TransferFailed();
     error AeternumVault__NotAuthorized();
-    error AeternumVault__NothingToWithdraw();
+    error AeternumVault__InvalidAmount();
     error AeternumVault__InsufficientBalance();
     error AeternumVault__DirectTransferNotAllowed();
     error AeternumVault__WalletAbandoned();
