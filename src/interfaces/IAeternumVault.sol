@@ -67,6 +67,7 @@ interface IAeternumVault {
     error AeternumVault__AlreadyRegistered();
     error AeternumVault__NotRegistered();
     error AeternumVault__InvalidBackupAddress();
+    error AeternumVault__InvalidAddress();
     error AeternumVault__ZeroAddress();
     error AeternumVault__InvalidInactivityPeriod();
     error AeternumVault__MaxPerformUpkeepSizeExceeded();

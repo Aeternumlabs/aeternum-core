@@ -266,12 +266,12 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *         Uses CEI: balance updated before the external ETH transfer.
      *         Emits {Sent} and {ActivityPinged}.
      *
-     * @param to     Recipient address. Must not be zero or the caller's own vault.
+     * @param to     Recipient address. Must not be zero.
      * @param amount Amount to send in wei. Must be ≤ caller's vault balance.
      */
     function send(address to, uint256 amount) external onlyRegistered nonReentrant {
         // Checks
-        if (to == address(0)) revert AeternumVault__InvalidBackupAddress();
+        if (to == address(0)) revert AeternumVault__InvalidAddress();
         if (amount == 0) revert AeternumVault__InvalidAmount();
 
         RecoveryConfig storage config = s_configs[msg.sender];
