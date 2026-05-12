@@ -8,7 +8,6 @@ import {IAeternumVault} from "../../src/interfaces/IAeternumVault.sol";
 import {ReentrantAttacker} from "../mocks/ReentrantAttacker.sol";
 import {RejectingReceiver} from "../mocks/RejectingReceiver.sol";
 import {RejectingCallerMock} from "../mocks/RejectingCallerMock.sol";
-import {RejectingTreasuryMock} from "../mocks/RejectingTreasuryMock.sol";
 
 /**
  * @title  AeternumVaultTest
