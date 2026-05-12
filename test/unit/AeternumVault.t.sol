@@ -133,17 +133,17 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_constructor_revertsIfMaxLessThanMin() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
-        new AeternumVault(365 days, 300 days, 5000, 50, 3, 1 hours);
+        new AeternumVault(180 days, 300 days, 5000, 50, 3, 1 hours);
     }
 
     function test_constructor_revertsIfMaxPerformUpkeepSizeIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidConstructorParam.selector);
-        new AeternumVault(365 days, 3650 days, 5000, 0, 3, 1 hours);
+        new AeternumVault(180 days, 3650 days, 5000, 0, 3, 1 hours);
     }
 
     function test_constructor_revertsIfMaxRecoveryAttemptsIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__MaxRecoveryAttemptsExceeded.selector);
-        new AeternumVault(365 days, 3650 days, 5000, 50, 0, 1 hours);
+        new AeternumVault(180 days, 3650 days, 5000, 50, 0, 1 hours);
     }
 
     /// SECTION 2. --- REGISTER — SUCCESS PATHS ---
@@ -865,7 +865,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerWallets(cv, 3, 100);
         assertEq(cv.getTotalRegistered(), 3);
 
-        // Idle advance fires immediately (s_lastCursorAdvance=0, timestamp=365 days)
+        // Idle advance fires immediately (s_lastCursorAdvance=0, timestamp=180 days)
         (bool immediateAdvance, bytes memory immPd) = cv.checkUpkeep(bytes(""));
         assertTrue(immediateAdvance, "Idle advance immediately eligible");
         cv.performUpkeep(immPd);
