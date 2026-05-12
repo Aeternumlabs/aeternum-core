@@ -126,8 +126,8 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 
 | Immutable variable | Value | Description |
 |---|---|---|
-| `MIN_INACTIVITY_PERIOD` | 180 days | Minimum inactivity period users are allowed to configure|
-| `MAX_INACTIVITY_PERIOD` | 3650 days | Maximum inactivity period allowed|
+| `MIN_INACTIVITY_PERIOD` | 180 days | Minimum inactivity period users are allowed to configure |
+| `MAX_INACTIVITY_PERIOD` | 3650 days | Maximum allowed inactivity period to prevent permanent fund lockup |
 | `MAX_CHECK_UPKEEP_SIZE` | 5,000 | Maximum wallets scanned per `checkUpkeep` call (off-chain simulation, no gas constraint) |
 | `MAX_PERFORM_UPKEEP_SIZE` | 50 | Maximum wallets recovered per `performUpkeep` call (on-chain execution, gas-bound) |
 | `MAX_RECOVERY_ATTEMPTS` | 3 | Consecutive failed recovery attempts before a vault is permanently abandoned |
@@ -301,7 +301,7 @@ After deployment:
 1. Go to [automation.chain.link](https://automation.chain.link) and connect your wallet
 2. Click **Register new upkeep** → select **Custom Logic**
 3. Set the target contract to your deployed `AeternumVault` address
-4. Leave `checkData` empty
+4. `checkData` should be empty
 5. Set gas limit to `500000`
 6. Fund the upkeep with LINK tokens from [faucets.chain.link](https://faucets.chain.link) (Sepolia)
 
