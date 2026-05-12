@@ -327,7 +327,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      * @notice Change the inactivity period.
      * @dev    The new period must remain within the enforced
      *         minimum and maximum inactivity bounds.
-     *         Resets the inactivity timer, signalling 
+     *         Resets the inactivity timer, signalling
      *         fresh wallet activity.
      *         Emits {InactivityPeriodUpdated} and {ActivityPinged}.
      *
