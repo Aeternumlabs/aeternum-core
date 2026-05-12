@@ -15,26 +15,20 @@ import {RejectingCallerMock} from "../mocks/RejectingCallerMock.sol";
  *
  *         Coverage areas:
  *           • Deployment / constructor
- *           • Registration (Free & Premium, edge cases, revert paths)
+ *           • Registration (edge cases, revert paths)
  *           • Deposit / send / withdrawAll
  *           • Ping (activity reset)
  *           • Config updates (backup address, inactivity period)
- *           • Subscription renewal
  *           • Recovery cancellation
  *           • Chainlink Automation (checkUpkeep + performUpkeep)
- *           • Treasury management
  *           • Security (reentrancy, access control, CEI invariants)
  *           • Fuzz tests
  *           • Invariant tests
  */
 contract AeternumVaultTest is StdInvariant, Test {
-    /*//////////////////////////////////////////////////////////////
-                              TEST SETUP
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- TEST SETUP ---
     AeternumVault public rm;
 
-    address public treasury = makeAddr("treasury");
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public carol = makeAddr("carol");
@@ -45,15 +39,10 @@ contract AeternumVaultTest is StdInvariant, Test {
     uint256 public constant STARTING_BALANCE = 100 ether;
     uint256 public constant DEPOSIT_1_ETH = 1 ether;
 
-    uint256 public FREE_PERIOD;
-    uint256 public PREMIUM_PERIOD;
-    uint256 public PREMIUM_FEE;
-
     event RecoveryRegistered(
         address indexed wallet,
         address indexed backupAddress,
-        uint256 inactivityPeriod,
-        IAeternumVault.SubscriptionTier tier
+        uint256 inactivityPeriod
     );
     event ActivityPinged(address indexed wallet, uint256 timestamp);
     event RecoveryExecuted(address indexed wallet, address indexed backupAddress, uint256 amount);
@@ -64,28 +53,16 @@ contract AeternumVaultTest is StdInvariant, Test {
     event Sent(address indexed wallet, address indexed to, uint256 amount);
     event BackupAddressUpdated(address indexed wallet, address indexed newBackupAddress);
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
-    event SubscriptionRenewed(address indexed wallet, IAeternumVault.SubscriptionTier tier, uint256 expiresAt);
-    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
-    event SubscriptionFeesWithdrawn(address indexed treasury, uint256 amount);
 
     function setUp() public {
         rm = new AeternumVault(
-            treasury,
-            365 days, // MIN_INACTIVITY_PERIOD_FREE
-            180 days, // MIN_INACTIVITY_PERIOD_PREMIUM
+            180 days, // MIN_INACTIVITY_PERIOD
             3650 days, // MAX_INACTIVITY_PERIOD
-            30 days, // SUBSCRIPTION_DURATION
-            0.002 ether, // PREMIUM_MONTHLY_FEE
-            0.02 ether, // PREMIUM_ANNUAL_FEE
             5000, // MAX_CHECK_UPKEEP_SIZE
             50, // MAX_PERFORM_UPKEEP_SIZE
             3, // MAX_RECOVERY_ATTEMPTS
             1 hours // CURSOR_ADVANCE_INTERVAL
         );
-
-        FREE_PERIOD = rm.MIN_INACTIVITY_PERIOD_FREE();
-        PREMIUM_PERIOD = rm.MIN_INACTIVITY_PERIOD_PREMIUM();
-        PREMIUM_FEE = rm.PREMIUM_MONTHLY_FEE();
 
         deal(alice, STARTING_BALANCE);
         deal(bob, STARTING_BALANCE);
@@ -94,10 +71,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         targetContract(address(rm));
     }
 
-    /*//////////////////////////////////////////////////////////////
-                        HELPERS
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- HELPERS ---   
     // Cursor vault: small sizes make window/batch boundary tests tractable.
     // MAX_CHECK_UPKEEP_SIZE = 6, MAX_PERFORM_UPKEEP_SIZE = 3, INTERVAL = 30s
     AeternumVault cv;
@@ -108,13 +82,8 @@ contract AeternumVaultTest is StdInvariant, Test {
         returns (AeternumVault)
     {
         AeternumVault v = new AeternumVault(
-            treasury,
-            365 days,
             180 days,
             3650 days,
-            30 days,
-            0.002 ether,
-            0.02 ether,
             checkSize,
             performSize,
             3,

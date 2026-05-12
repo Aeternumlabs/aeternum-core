@@ -150,6 +150,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 cursorAdvanceInterval_
     ) {
         // Validations
+        if (minInactivityPeriod_ == 0) revert AeternumVault__InvalidInactivityPeriod();
         if (maxInactivityPeriod_ < minInactivityPeriod_) revert AeternumVault__InvalidInactivityPeriod();
         if (maxCheckUpkeepSize_ == 0) revert AeternumVault__InvalidConstructorParam();
         if (maxPerformUpkeepSize_ == 0) revert AeternumVault__InvalidConstructorParam();
