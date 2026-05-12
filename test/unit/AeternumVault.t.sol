@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test, console2, Vm} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {AeternumVault} from "../../src/AeternumVault.sol";
 import {IAeternumVault} from "../../src/interfaces/IAeternumVault.sol";
@@ -133,7 +133,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_constructor_revertsIfMaxLessThanMin() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
-        new AeternumVault(180 days, 300 days, 5000, 50, 3, 1 hours);
+        new AeternumVault(180 days, 150 days, 5000, 50, 3, 1 hours);
     }
 
     function test_constructor_revertsIfMaxPerformUpkeepSizeIsZero() public {
