@@ -325,24 +325,20 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /**
      * @notice Change the inactivity period.
-     * @dev    The minimum period enforced depends on whether the caller has an active
-     *         Premium subscription at the time of the call. If the subscription has
-     *         expired, the Free minimum (365 days) applies.
-     *         Resets the inactivity timer.
+     * @dev    The new period must remain within the enforced
+     *         minimum and maximum inactivity bounds.
+     *         Resets the inactivity timer, signalling 
+     *         fresh wallet activity.
      *         Emits {InactivityPeriodUpdated} and {ActivityPinged}.
      *
      * @param newPeriod New inactivity period in seconds.
      */
     function updateInactivityPeriod(uint256 newPeriod) external onlyRegistered {
-        RecoveryConfig storage config = s_configs[msg.sender];
-
-        bool premiumActive = config.tier == SubscriptionTier.Premium && block.timestamp <= config.subscriptionExpiry;
-
-        uint256 minPeriod = premiumActive ? MIN_INACTIVITY_PERIOD_PREMIUM : MIN_INACTIVITY_PERIOD_FREE;
-
-        if (newPeriod < minPeriod || newPeriod > MAX_INACTIVITY_PERIOD) {
+        if (newPeriod < MIN_INACTIVITY_PERIOD || newPeriod > MAX_INACTIVITY_PERIOD) {
             revert AeternumVault__InvalidInactivityPeriod();
         }
+
+        RecoveryConfig storage config = s_configs[msg.sender];
 
         config.inactivityPeriod = newPeriod;
         config.lastActivity = block.timestamp;
@@ -353,8 +349,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /**
      * @notice Cancel recovery and withdraw all escrowed ETH in one transaction.
-     * @dev    Permanently removes the caller from monitoring. Subscription fees are
-     *         non-refundable. A re-registration after cancellation is allowed.
+     * @dev    Permanently removes the caller from monitoring.
+     *         A re-registration after cancellation is allowed.
      *         Uses CEI: deregistration and balance zeroing occur before the ETH transfer.
      *         Emits {RecoveryCancelled}.
      */
@@ -376,10 +372,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         }
     }
 
-    /*//////////////////////////////////////////////////////////////
-                    CHAINLINK AUTOMATION FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- CHAINLINK AUTOMATION FUNCTIONS ---
     /**
      * @notice Scans the current cursor window for wallets due for recovery.
      *
@@ -528,55 +521,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         }
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         TREASURY FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @notice Withdraw all accumulated subscription fees to the treasury address.
-     * @dev    Only the treasury address may call this. It has NO access to user
-     *         recovery balances — those are tracked separately in `s_configs[].balance`.
-     *         Uses CEI: s_accumulatedFees zeroed before the ETH transfer.
-     *         Emits {SubscriptionFeesWithdrawn}.
-     */
-    function withdrawSubscriptionFees() external onlyTreasury nonReentrant {
-        uint256 amount = s_accumulatedFees;
-
-        // Check
-        if (amount == 0) revert AeternumVault__NothingToWithdraw();
-
-        // Effects
-        s_accumulatedFees = 0;
-
-        emit SubscriptionFeesWithdrawn(s_treasury, amount);
-
-        // Interaction
-        (bool success,) = s_treasury.call{value: amount}("");
-        if (!success) revert AeternumVault__TransferFailed();
-    }
-
-    /**
-     * @notice Transfer treasury authority to a new address.
-     * @dev    Only the current treasury may call this. For production deployments,
-     *         consider a two-step transfer pattern (nominee confirms) to prevent
-     *         accidental loss of access.
-     *         Emits {TreasuryUpdated}.
-     *
-     * @param newTreasury New treasury address. Must not be the zero address.
-     */
-    function updateTreasury(address newTreasury) external onlyTreasury {
-        if (newTreasury == address(0)) revert AeternumVault__ZeroAddress();
-
-        address oldTreasury = s_treasury;
-        s_treasury = newTreasury;
-
-        emit TreasuryUpdated(oldTreasury, newTreasury);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                             VIEW FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- VIEW FUNCTIONS ---
     /// @notice Returns true if the wallet is currently registered and active.
     /// @param wallet The wallet address to query.
     function isRegistered(address wallet) external view returns (bool) {
