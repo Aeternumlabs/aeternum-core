@@ -433,7 +433,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
             if (
                 config.isActive && config.balance > 0
-                    && block.timestamp >= config.lastActivity + _effectiveInactivityPeriod(config)
+                    && block.timestamp >= config.lastActivity + config.inactivityPeriod
             ) {
                 candidates[count] = wallet;
                 unchecked {
@@ -542,8 +542,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     function isRecoveryDue(address wallet) external view returns (bool) {
         RecoveryConfig storage config = s_configs[wallet];
-        return config.isActive && config.balance > 0
-            && block.timestamp >= config.lastActivity + _effectiveInactivityPeriod(config);
+        return config.isActive && config.balance > 0 && block.timestamp >= config.lastActivity + config.inactivityPeriod;
     }
 
     /**
@@ -555,7 +554,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         RecoveryConfig storage config = s_configs[wallet];
         if (!config.isActive || config.balance == 0) return 0;
 
-        uint256 deadline = config.lastActivity + _effectiveInactivityPeriod(config);
+        uint256 deadline = config.lastActivity + config.inactivityPeriod;
         if (block.timestamp >= deadline) return 0;
         return deadline - block.timestamp;
     }
@@ -603,16 +602,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /// --- INTERNAL FUNCTIONS ---
     /**
-     * @notice Returns the configured inactivity period for a wallet.
-     * @dev    The inactivity period is fixed at registration or update time.
-     *
-     * @param config The wallet's recovery config storage pointer.
-     */
-    function _effectiveInactivityPeriod(RecoveryConfig storage config) internal view returns (uint256) {
-        return config.inactivityPeriod;
-    }
-
-    /**
      * @notice Executes recovery for a single wallet, transferring its balance to the backup address.
      * @dev Attempts to execute recovery for a single wallet.
      *      Re-validates all conditions so stale or duplicate entries are safely skipped.
@@ -654,7 +643,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         // Re-validate (Checks)
         if (!config.isActive) return;
         if (config.balance == 0) return;
-        if (block.timestamp < config.lastActivity + _effectiveInactivityPeriod(config)) return;
+        if (block.timestamp < config.lastActivity + config.inactivityPeriod) return;
 
         address backupAddress = config.backupAddress;
         uint256 amount = config.balance;
