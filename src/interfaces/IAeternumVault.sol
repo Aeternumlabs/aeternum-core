@@ -68,12 +68,10 @@ interface IAeternumVault {
     error AeternumVault__NotRegistered();
     error AeternumVault__InvalidBackupAddress();
     error AeternumVault__InvalidAddress();
-    error AeternumVault__ZeroAddress();
     error AeternumVault__InvalidInactivityPeriod();
     error AeternumVault__MaxPerformUpkeepSizeExceeded();
     error AeternumVault__MaxRecoveryAttemptsExceeded();
     error AeternumVault__TransferFailed();
-    error AeternumVault__NotAuthorized();
     error AeternumVault__InvalidAmount();
     error AeternumVault__InsufficientBalance();
     error AeternumVault__DirectTransferNotAllowed();

@@ -27,8 +27,8 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *
  *         TRUST MODEL
  *         ─────────────────────────────────────────────────────────────────────
- *         • No admin can pause recovery, redirect funds, or change user configs.
- *         • Recovery execution is permissionless via Chainlink Automation.
+ *         • No admin or owner to pause recovery, redirect funds, or change user configs.
+ *         • Recovery execution is fully autonomous and permissionless via Chainlink Automation.
  *         • All state changes follow the Checks-Effects-Interactions (CEI) pattern.
  *         • ReentrancyGuard provides a secondary reentrancy defence layer.
  *
