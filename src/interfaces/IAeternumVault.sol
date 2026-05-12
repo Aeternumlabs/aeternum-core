@@ -8,7 +8,6 @@ pragma solidity ^0.8.24;
  *         Defines all public/external types, events, errors, and function signatures.
  */
 interface IAeternumVault {
-   
     /// --- STRUCTS ---
     /**
      * @notice All configuration and state for a single registered wallet.
@@ -30,9 +29,7 @@ interface IAeternumVault {
 
     /// --- EVENTS ---
     /// @notice Emitted when a wallet is successfully registered for recovery.
-    event RecoveryRegistered(
-        address indexed wallet, address indexed backupAddress, uint256 inactivityPeriod
-    );
+    event RecoveryRegistered(address indexed wallet, address indexed backupAddress, uint256 inactivityPeriod);
 
     /// @notice Emitted whenever the inactivity timer is reset (ping, deposit, withdraw, config update).
     event ActivityPinged(address indexed wallet, uint256 timestamp);
@@ -84,9 +81,7 @@ interface IAeternumVault {
 
     /// --- FUNCTION SIGNATURES ---
     // User-facing
-    function register(address backupAddress, uint256 inactivityPeriod)
-        external
-        payable;
+    function register(address backupAddress, uint256 inactivityPeriod) external payable;
 
     function deposit() external payable;
 

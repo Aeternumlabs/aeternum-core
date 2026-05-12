@@ -48,17 +48,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     /// @notice Minimum inactivity period allowed.
     uint256 public immutable MIN_INACTIVITY_PERIOD;
 
-    /// @notice Hard ceiling on any inactivity period (prevents permanent lock-up).
+    /// @notice Hard ceiling on inactivity period (prevents permanent lock-up).
     uint256 public immutable MAX_INACTIVITY_PERIOD;
-
-    /// @notice Duration of a Premium subscription period.
-    uint256 public immutable SUBSCRIPTION_DURATION;
-
-    /// @notice Monthly fee (in wei) required to register or renew a Premium subscription.
-    uint256 public immutable PREMIUM_MONTHLY_FEE;
-
-    /// @notice Annual fee (in wei) for a full-year Premium subscription (discounted).
-    uint256 public immutable PREMIUM_ANNUAL_FEE;
 
     /**
      * @notice Maximum wallets scanned per `checkUpkeep` call (off-chain simulation).
@@ -91,10 +82,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     uint256 public immutable CURSOR_ADVANCE_INTERVAL;
 
-    /*//////////////////////////////////////////////////////////////
-                            STATE VARIABLES
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- STATE VARIABLES ---
     /// @dev Primary configuration store. Key: registered wallet address.
     mapping(address => RecoveryConfig) private s_configs;
 
@@ -118,15 +106,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     mapping(address => bool) private s_abandonedBackupAddresses;
 
-    /// @dev Running total of subscription fees not yet withdrawn by treasury.
-    uint256 private s_accumulatedFees;
-
-    /**
-     * @dev Address authorised to withdraw `s_accumulatedFees`.
-     *      Has NO ability to access or redirect user recovery balances.
-     */
-    address private s_treasury;
-
     /**
      * @dev Rolling scan cursor. Tracks which registry index the next `checkUpkeep`
      *      scan window begins from. Advanced by `performUpkeep` when a window is clear.
@@ -142,10 +121,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     uint256 private s_lastCursorAdvance;
 
-    /*//////////////////////////////////////////////////////////////
-                               MODIFIERS
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- MODIFIERS ---
     /// @dev Reverts if the caller does not have an active recovery config.
     modifier onlyRegistered() {
         if (!s_configs[msg.sender].isActive && !s_configs[msg.sender].isAbandoned) {
@@ -154,51 +130,27 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         _;
     }
 
-    /// @dev Reverts if the caller is not the current treasury address.
-    modifier onlyTreasury() {
-        if (msg.sender != s_treasury) revert AeternumVault__NotAuthorized();
-        _;
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                              CONSTRUCTOR
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- CONSTRUCTOR ---
     /**
      * @notice Initialises the vault with all immutable configuration.
      *
-     * @param treasury_               Fee withdrawal address (recommend Gnosis Safe).
-     * @param minInactivityFree_      Minimum inactivity period for Free tier (seconds).
-     * @param minInactivityPremium_   Minimum inactivity period for Premium tier (seconds).
+     * @param minInactivityPeriod_    Minimum inactivity period (seconds).
      * @param maxInactivityPeriod_    Hard ceiling on inactivity period (seconds).
-     * @param subscriptionDuration_   Duration of one subscription period (seconds).
-     * @param premiumMonthlyFee_      Fee in wei for a monthly Premium subscription.
-     * @param premiumAnnualFee_       Fee in wei for an annual Premium subscription.
      * @param maxCheckUpkeepSize_     Max wallets scanned per checkUpkeep (off-chain).
      * @param maxPerformUpkeepSize_   Max wallets recovered per performUpkeep (on-chain).
      * @param maxRecoveryAttempts_    Max failed attempts before a wallet is abandoned.
      * @param cursorAdvanceInterval_  Seconds between idle cursor advances.
      */
     constructor(
-        address treasury_,
-        uint256 minInactivityFree_,
-        uint256 minInactivityPremium_,
+        uint256 minInactivityPeriod_,
         uint256 maxInactivityPeriod_,
-        uint256 subscriptionDuration_,
-        uint256 premiumMonthlyFee_,
-        uint256 premiumAnnualFee_,
         uint256 maxCheckUpkeepSize_,
         uint256 maxPerformUpkeepSize_,
         uint8 maxRecoveryAttempts_,
         uint256 cursorAdvanceInterval_
     ) {
         // Validations
-        if (treasury_ == address(0)) revert AeternumVault__ZeroAddress();
-        if (minInactivityPremium_ == 0) revert AeternumVault__InvalidInactivityPeriod();
-        if (minInactivityFree_ < minInactivityPremium_) revert AeternumVault__InvalidInactivityPeriod();
-        if (maxInactivityPeriod_ < minInactivityFree_) revert AeternumVault__InvalidInactivityPeriod();
-        if (subscriptionDuration_ == 0) revert AeternumVault__InvalidSubscriptionDuration();
-        if (premiumAnnualFee_ < premiumMonthlyFee_) revert AeternumVault__InvalidPremiumPayment();
+        if (maxInactivityPeriod_ < minInactivityPeriod_) revert AeternumVault__InvalidInactivityPeriod();
         if (maxCheckUpkeepSize_ == 0) revert AeternumVault__InvalidConstructorParam();
         if (maxPerformUpkeepSize_ == 0) revert AeternumVault__InvalidConstructorParam();
         if (maxPerformUpkeepSize_ > maxCheckUpkeepSize_) revert AeternumVault__MaxPerformUpkeepSizeExceeded();
@@ -206,45 +158,28 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         if (cursorAdvanceInterval_ == 0) revert AeternumVault__InvalidConstructorParam();
 
         // Assignments
-        s_treasury = treasury_;
-        MIN_INACTIVITY_PERIOD_FREE = minInactivityFree_;
-        MIN_INACTIVITY_PERIOD_PREMIUM = minInactivityPremium_;
+        MIN_INACTIVITY_PERIOD = minInactivityFree_;
         MAX_INACTIVITY_PERIOD = maxInactivityPeriod_;
-        SUBSCRIPTION_DURATION = subscriptionDuration_;
-        PREMIUM_MONTHLY_FEE = premiumMonthlyFee_;
-        PREMIUM_ANNUAL_FEE = premiumAnnualFee_;
         MAX_CHECK_UPKEEP_SIZE = maxCheckUpkeepSize_;
         MAX_PERFORM_UPKEEP_SIZE = maxPerformUpkeepSize_;
         MAX_RECOVERY_ATTEMPTS = maxRecoveryAttempts_;
         CURSOR_ADVANCE_INTERVAL = cursorAdvanceInterval_;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         USER-FACING FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
+    /// --- USER-FACING FUNCTIONS ---
     /**
      * @notice Register a wallet for recovery.
      *
      * @dev    The caller's address is treated as the "primary wallet" being protected.
-     *         Any ETH sent above the subscription fee (if Premium) is deposited into
-     *         the recovery vault. Registration with 0 balance is valid; the user can
-     *         `deposit()` later.
+     *         Registration with 0 balance is valid; the user can `deposit()` later.
      *
      *         Emits {RecoveryRegistered} and, if ETH is deposited, {Deposited}.
      *
      * @param backupAddress    Address that will receive funds if recovery is triggered.
-     *                         Must not be zero or the caller's own address.
+     *                         Must not be zero, the caller's own address, or abandoned backup address.
      * @param inactivityPeriod Seconds without activity before recovery executes.
-     *                         Free: [MIN_INACTIVITY_PERIOD_FREE, MAX_INACTIVITY_PERIOD]
-     *                         Premium: [MIN_INACTIVITY_PERIOD_PREMIUM, MAX_INACTIVITY_PERIOD]
-     * @param tier             Desired subscription tier. Premium requires msg.value ≥ PREMIUM_MONTHLY_FEE.
      */
-    function register(address backupAddress, uint256 inactivityPeriod, SubscriptionTier tier, SubscriptionPlan plan)
-        external
-        payable
-        nonReentrant
-    {
+    function register(address backupAddress, uint256 inactivityPeriod) external payable nonReentrant {
         // Checks
         if (s_configs[msg.sender].isActive) revert AeternumVault__AlreadyRegistered();
         if (s_abandonedBackupAddresses[backupAddress]) revert AeternumVault__WalletAbandoned();
@@ -254,42 +189,16 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         if (backupAddress == address(0) || backupAddress == msg.sender) {
             revert AeternumVault__InvalidBackupAddress();
         }
-        if (inactivityPeriod > MAX_INACTIVITY_PERIOD) {
+        if (inactivityPeriod < MIN_INACTIVITY_PERIOD || inactivityPeriod > MAX_INACTIVITY_PERIOD) {
             revert AeternumVault__InvalidInactivityPeriod();
         }
-
-        uint256 subscriptionPayment = 0;
-        uint256 subscriptionExpiry = 0;
-
-        if (tier == SubscriptionTier.Premium) {
-            if (plan == SubscriptionPlan.Annual) {
-                if (msg.value < PREMIUM_ANNUAL_FEE) revert AeternumVault__InsufficientSubscriptionFee();
-                subscriptionPayment = PREMIUM_ANNUAL_FEE;
-                subscriptionExpiry = block.timestamp + (12 * SUBSCRIPTION_DURATION);
-            } else {
-                if (msg.value < PREMIUM_MONTHLY_FEE) revert AeternumVault__InsufficientSubscriptionFee();
-                subscriptionPayment = PREMIUM_MONTHLY_FEE;
-                subscriptionExpiry = block.timestamp + SUBSCRIPTION_DURATION;
-            }
-            if (inactivityPeriod < MIN_INACTIVITY_PERIOD_PREMIUM) {
-                revert AeternumVault__InvalidInactivityPeriod();
-            }
-        } else {
-            if (inactivityPeriod < MIN_INACTIVITY_PERIOD_FREE) {
-                revert AeternumVault__InvalidInactivityPeriod();
-            }
-        }
-
-        uint256 depositAmount = msg.value - subscriptionPayment;
 
         // Effects
         s_configs[msg.sender] = RecoveryConfig({
             backupAddress: backupAddress,
             inactivityPeriod: inactivityPeriod,
             lastActivity: block.timestamp,
-            balance: depositAmount + carriedBalance,
-            tier: tier,
-            subscriptionExpiry: subscriptionExpiry,
+            balance: msg.value + carriedBalance,
             isActive: true,
             failedRecoveryAttempts: 0,
             isAbandoned: false
@@ -298,12 +207,10 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         s_registeredWallets.push(msg.sender);
         s_walletIndexPlusOne[msg.sender] = s_registeredWallets.length; // 1-indexed
 
-        s_accumulatedFees += subscriptionPayment;
-
         // Emit
-        emit RecoveryRegistered(msg.sender, backupAddress, inactivityPeriod, tier);
-        if (depositAmount > 0) {
-            emit Deposited(msg.sender, depositAmount);
+        emit RecoveryRegistered(msg.sender, backupAddress, inactivityPeriod);
+        if (msg.value > 0) {
+            emit Deposited(msg.sender, msg.value);
         }
 
         // No external interactions.
@@ -441,56 +348,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         config.lastActivity = block.timestamp;
 
         emit InactivityPeriodUpdated(msg.sender, newPeriod);
-        emit ActivityPinged(msg.sender, block.timestamp);
-    }
-
-    /**
-     * @notice Purchase or renew a Premium subscription, optionally updating the inactivity period
-     *         in the same transaction.
-     *
-     * @dev    Passing `newInactivityPeriod = 0` preserves the caller's existing period.
-     *         Passing a non-zero value updates the period, subject to Premium-tier validation.
-     *         This allows Free users upgrading to Premium to immediately benefit from the
-     *         shorter inactivity window without a second `updateInactivityPeriod()` call.
-     *
-     * @param plan                New or renewed subscription plan (Monthly or Annual).
-     * @param newInactivityPeriod New inactivity period in seconds, or 0 to keep existing.
-     */
-    function renewSubscription(SubscriptionPlan plan, uint256 newInactivityPeriod)
-        external
-        payable
-        onlyRegistered
-        nonReentrant
-    {
-        uint256 requiredFee = (plan == SubscriptionPlan.Annual) ? PREMIUM_ANNUAL_FEE : PREMIUM_MONTHLY_FEE;
-
-        uint256 duration = (plan == SubscriptionPlan.Annual) ? 12 * SUBSCRIPTION_DURATION : SUBSCRIPTION_DURATION;
-
-        if (msg.value != requiredFee) revert AeternumVault__InsufficientSubscriptionFee();
-
-        RecoveryConfig storage config = s_configs[msg.sender];
-
-        uint256 base = (config.subscriptionExpiry > block.timestamp) ? config.subscriptionExpiry : block.timestamp;
-
-        uint256 newExpiry = base + duration;
-
-        // Effects
-        config.tier = SubscriptionTier.Premium;
-        config.subscriptionExpiry = newExpiry;
-        config.lastActivity = block.timestamp;
-        s_accumulatedFees += requiredFee;
-
-        // Optionally update inactivity period in the same transaction.
-        // Validated against Premium minimum since subscription is now active.
-        if (newInactivityPeriod != 0) {
-            if (newInactivityPeriod < MIN_INACTIVITY_PERIOD_PREMIUM || newInactivityPeriod > MAX_INACTIVITY_PERIOD) {
-                revert AeternumVault__InvalidInactivityPeriod();
-            }
-            config.inactivityPeriod = newInactivityPeriod;
-            emit InactivityPeriodUpdated(msg.sender, newInactivityPeriod);
-        }
-
-        emit SubscriptionRenewed(msg.sender, SubscriptionTier.Premium, newExpiry);
         emit ActivityPinged(msg.sender, block.timestamp);
     }
 
