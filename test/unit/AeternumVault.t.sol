@@ -56,6 +56,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     event Withdrawn(address indexed wallet, uint256 amount);
     event BackupAddressUpdated(address indexed wallet, address indexed newBackupAddress);
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
+    event ForwarderSet(address indexed forwarder);
 
     /// --- SETUP ---
     function setUp() public {
@@ -1464,7 +1465,99 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getTotalRegistered(), 0);
     }
 
-    /// SECTION 14. --- FUZZ TESTS ---
+    /*//////////////////////////////////////////////////////////////
+             14. SECURITY — FORWARDER ACCESS CONTROL
+    //////////////////////////////////////////////////////////////*/
+
+    function test_getForwarder_returnsZeroAddressBeforeSet() public view {
+        assertEq(rm.getForwarder(), address(0));
+    }
+
+    function test_setForwarder_success() public {
+        address forwarder = makeAddr("forwarder");
+        rm.setForwarder(forwarder);
+        assertEq(rm.getForwarder(), forwarder);
+    }
+
+    function test_setForwarder_emitsEvent() public {
+        address forwarder = makeAddr("forwarder");
+
+        vm.expectEmit(true, false, false, false);
+        emit ForwarderSet(forwarder);
+
+        rm.setForwarder(forwarder);
+    }
+
+    function test_setForwarder_revertsOnZeroAddress() public {
+        vm.expectRevert(IAeternumVault.AeternumVault__InvalidAddress.selector);
+        rm.setForwarder(address(0));
+    }
+
+    function test_setForwarder_revertsIfAlreadySet() public {
+        rm.setForwarder(makeAddr("forwarder"));
+
+        vm.expectRevert(IAeternumVault.AeternumVault__ForwarderAlreadySet.selector);
+        rm.setForwarder(makeAddr("newForwarder"));
+    }
+
+    function test_performUpkeep_allowsAnyCallerBeforeForwarderIsSet() public {
+        // s_forwarder == address(0) — guard is skipped, anyone can call
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+
+        vm.prank(bob); // random address, not a forwarder
+        rm.performUpkeep(pd); // must not revert
+
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+    }
+
+    function test_performUpkeep_revertsIfCalledByNonForwarder_whenForwarderIsSet() public {
+        rm.setForwarder(makeAddr("forwarder"));
+
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+
+        vm.expectRevert(IAeternumVault.AeternumVault__NotForwarder.selector);
+        vm.prank(bob); // not the registered forwarder
+        rm.performUpkeep(pd);
+    }
+
+    function test_performUpkeep_allowsForwarderToCall() public {
+        address forwarder = makeAddr("forwarder");
+        rm.setForwarder(forwarder);
+
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+
+        vm.prank(forwarder);
+        rm.performUpkeep(pd); // must not revert
+
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
+    }
+
+    function test_performUpkeep_ownerCannotCallAfterForwarderIsSet() public {
+        // Verifies there is no special owner privilege —
+        // even the deployer is blocked once the forwarder is locked in.
+        rm.setForwarder(makeAddr("forwarder"));
+
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+
+        // address(this) is the test contract, which deployed rm — still blocked
+        vm.expectRevert(IAeternumVault.AeternumVault__NotForwarder.selector);
+        rm.performUpkeep(pd);
+    }
+
+    /// SECTION 15. --- FUZZ TESTS ---
     function testFuzz_register_validInactivityPeriod(uint256 period) public {
         period = bound(period, INACTIVITY_PERIOD, rm.MAX_INACTIVITY_PERIOD());
 
@@ -1501,7 +1594,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         }
     }
 
-    /// SECTION 15. --- INVARIANT TESTS ---
+    /// SECTION 16. --- INVARIANT TESTS ---
     /**
      * @notice Contract ETH balance must always be ≥ sum of all user vault balances.
      * @dev    With no fee model, contract balance should equal the exact sum.
