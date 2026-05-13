@@ -92,8 +92,8 @@ aeternum-core/
 | Actor | Can Do | Cannot Do |
 |---|---|---|
 | **User** | Register, deposit, send, withdrawAll, ping, update config, cancel | Access other users' funds |
-| **Chainlink Automation** | Call `performUpkeep` when inactivity conditions are met | Alter configs or redirect funds |
-| **Anyone** | Call `checkUpkeep` (read-only, off-chain simulation) | Trigger recovery before period elapses |
+| **Chainlink Automation** | Call `performUpkeep` via the registered forwarder when inactivity conditions are met | Alter configs or redirect funds |
+| **Anyone** | Call `checkUpkeep` (read-only, off-chain simulation) | Call `performUpkeep` once forwarder is set |
 | **No one** | — | Pause recovery, upgrade the contract, or access user funds |
 
 ## How It Works
@@ -112,7 +112,10 @@ If a user wants to prove liveness without moving funds, they call `ping()` — a
 
 **4. Recovery triggers**
 
-Chainlink Automation polls `checkUpkeep()` off-chain every ~12 seconds. When a vault's inactivity period has elapsed and its balance is non-zero, the Automation node submits `performUpkeep()` on-chain, transferring the ETH to the backup address.
+Chainlink Automation polls `checkUpkeep()` off-chain every ~12 seconds. When a vault's 
+inactivity period has elapsed and its balance is non-zero, the Automation node submits 
+`performUpkeep()` on-chain via the registered forwarder contract, transferring the ETH 
+to the backup address. 
 
 **5. Failed recovery**
 
@@ -126,7 +129,7 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 
 | Immutable variable | Value | Description |
 |---|---|---|
-| `MIN_INACTIVITY_PERIOD` | 180 days | Minimum inactivity period users are allowed to configure |
+| `MIN_INACTIVITY_PERIOD` | 180 days (5 minutes for testnet) | Minimum inactivity period users are allowed to configure |
 | `MAX_INACTIVITY_PERIOD` | 3650 days | Maximum allowed inactivity period to prevent permanent fund lockup |
 | `MAX_CHECK_UPKEEP_SIZE` | 5,000 | Maximum wallets scanned per `checkUpkeep` call (off-chain simulation, no gas constraint) |
 | `MAX_PERFORM_UPKEEP_SIZE` | 50 | Maximum wallets recovered per `performUpkeep` call (on-chain execution, gas-bound) |
@@ -304,6 +307,9 @@ After deployment:
 4. `checkData` should be empty
 5. Set gas limit to `500000`
 6. Fund the upkeep with LINK tokens from [faucets.chain.link](https://faucets.chain.link) (Sepolia)
+7. After registration, open your upkeep details and copy the **Forwarder** address
+8. Call `setForwarder(forwarderAddress)` on your deployed contract — this permanently locks
+   `performUpkeep` so only Chainlink's forwarder can call it. This can only be set once.
 
 ## Security
 
@@ -312,6 +318,9 @@ After deployment:
 - **Checks-Effects-Interactions (CEI)** enforced on all ETH-transferring paths
 - **ReentrancyGuard** applied as a secondary defence layer on all state-changing functions
 - **No admin backdoors** — the contract contains no owner or privileged roles capable of pausing recovery, redirecting funds, or accessing user balances
+- **Chainlink forwarder gating** — once `setForwarder()` is called post-deployment, 
+  `performUpkeep()` rejects all callers except the designated Chainlink Automation 
+  forwarder address. The setter is callable exactly once and locks permanently.
 - **Stale `performData` safety** — `_executeRecovery` re-validates every wallet before acting; stale or already-recovered entries are silently skipped
 - **O(1) registry removal** — swap-and-pop with 1-indexed mappings prevents array corruption during batch removals
 - **Failed recovery handling** — after `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is abandoned and balance remains self-claimable
