@@ -1465,10 +1465,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getTotalRegistered(), 0);
     }
 
-    /*//////////////////////////////////////////////////////////////
-             14. SECURITY — FORWARDER ACCESS CONTROL
-    //////////////////////////////////////////////////////////////*/
-
+    /// SECTION 14. --- SECURITY — FORWARDER ACCESS CONTROL ---
     function test_getForwarder_returnsZeroAddressBeforeSet() public view {
         assertEq(rm.getForwarder(), address(0));
     }
