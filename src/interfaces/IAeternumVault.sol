@@ -63,6 +63,9 @@ interface IAeternumVault {
     /// @notice Emitted when the inactivity period is changed.
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
 
+    /// @notice Emitted when forwarder address is set.
+    event ForwarderSet(address indexed forwarder);
+
     /// --- CUSTOM ERRORS ---
     error AeternumVault__AlreadyRegistered();
     error AeternumVault__NotRegistered();
@@ -77,6 +80,8 @@ interface IAeternumVault {
     error AeternumVault__DirectTransferNotAllowed();
     error AeternumVault__WalletAbandoned();
     error AeternumVault__InvalidConstructorParam();
+    error AeternumVault__NotForwarder();
+    error AeternumVault__ForwarderAlreadySet();
 
     /// --- FUNCTION SIGNATURES ---
     // User-facing
@@ -107,6 +112,8 @@ interface IAeternumVault {
 
     function performUpkeep(bytes calldata performData) external;
 
+    function setForwarder(address forwarder) external;
+
     // View
     function isRegistered(address wallet) external view returns (bool);
 
@@ -123,4 +130,6 @@ interface IAeternumVault {
     function getCheckCursor() external view returns (uint256);
 
     function getLastCursorAdvance() external view returns (uint256);
+
+    function getForwarder() external view returns (address);
 }

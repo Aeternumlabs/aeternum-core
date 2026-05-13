@@ -121,6 +121,13 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      */
     uint256 private s_lastCursorAdvance;
 
+    /**
+     * @dev Chainlink Automation forwarder address for this upkeep.
+     *      Set once via setForwarder() after upkeep registration.
+     *      Once set, only this address may call performUpkeep().
+     */
+    address private s_forwarder;
+
     /// --- MODIFIERS ---
     /// @dev Reverts if the caller does not have an active recovery config.
     modifier onlyRegistered() {
@@ -500,6 +507,13 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         override(IAeternumVault, AutomationCompatibleInterface)
         nonReentrant
     {
+        // Once forwarder is set, reject any caller that isn't it.
+        // Before setForwarder() is called (s_forwarder == address(0)),
+        // the check is skipped so you can test manually on Sepolia.
+        if (s_forwarder != address(0) && msg.sender != s_forwarder) {
+            revert AeternumVault__NotForwarder();
+        }
+
         (address[] memory walletsToRecover, uint256 nextCursor, bool isIdleAdvance) =
             abi.decode(performData, (address[], uint256, bool));
 
@@ -520,6 +534,20 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
                 ++i;
             }
         }
+    }
+
+    /**
+     * @notice Set the Chainlink Automation forwarder address for this upkeep.
+     * @dev    Can only be called once. After this, only the forwarder may call
+     *         performUpkeep(). Get the forwarder address from the Chainlink
+     *         Automation UI after registering the upkeep.
+     * @param  forwarder The forwarder address assigned to this upkeep.
+     */
+    function setForwarder(address forwarder) external {
+        if (s_forwarder != address(0)) revert AeternumVault__ForwarderAlreadySet();
+        if (forwarder == address(0)) revert AeternumVault__InvalidAddress();
+        s_forwarder = forwarder;
+        emit ForwarderSet(forwarder);
     }
 
     /// --- VIEW FUNCTIONS ---
@@ -599,6 +627,11 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     /// @notice Returns the timestamp of the last idle cursor advancement.
     function getLastCursorAdvance() external view returns (uint256) {
         return s_lastCursorAdvance;
+    }
+
+    /// @notice Returns the Chainlink Automation forwarder address.
+    function getForwarder() external view returns (address) {
+        return s_forwarder;
     }
 
     /// --- INTERNAL FUNCTIONS ---
