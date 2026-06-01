@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test, console2, Vm} from "forge-std/Test.sol";
+import {Test, console2, Vm, stdStorage, StdStorage} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {AeternumVault} from "../../src/AeternumVault.sol";
 import {IAeternumVault} from "../../src/interfaces/IAeternumVault.sol";
@@ -29,6 +29,8 @@ import {RejectingCallerMock} from "../mocks/RejectingCallerMock.sol";
  *           • Invariant tests
  */
 contract AeternumVaultTest is StdInvariant, Test {
+    using stdStorage for StdStorage;
+
     /// --- TEST SETUP ---
     AeternumVault public rm;
 
@@ -811,7 +813,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_cursor_advancesWithEmptyCandidates_whenWindowClear_andIntervalElapsed() public {
         cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 3, 0);
+        _registerWallets(cv, 11, 0);
 
         vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
 
@@ -839,7 +841,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_cursor_updatesAdvanceTimestamp_onIdleAdvance() public {
         cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 3, 0);
+        _registerWallets(cv, 11, 0);
         vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
 
         (, bytes memory pd) = cv.checkUpkeep(bytes(""));
@@ -864,7 +866,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     function test_cursor_resetsToZero_whenRegistryShrunkBelowCursor() public {
-        cv = _deployCursorVault(10, 3, 30 seconds);
+        cv = _deployCursorVault(5, 3, 30 seconds);
         (address[] memory users,) = _registerWallets(cv, 10, 0);
 
         vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
@@ -897,8 +899,8 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(cv.getTotalRegistered(), 0);
 
         // Add non-due wallets so registry is not empty for interval gating
-        _registerWallets(cv, 3, 100);
-        assertEq(cv.getTotalRegistered(), 3);
+        _registerWallets(cv, 7, 100);
+        assertEq(cv.getTotalRegistered(), 7);
 
         // Idle advance fires immediately (s_lastCursorAdvance=0, timestamp=180 days)
         (bool immediateAdvance, bytes memory immPd) = cv.checkUpkeep(bytes(""));
@@ -921,6 +923,193 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         cv.performUpkeep(pd3);
         assertEq(cv.getLastCursorAdvance(), block.timestamp, "Timestamp updated after second idle advance");
+    }
+
+    /// SECTION 9c. --- CURSOR OPTIMISATION (SINGLE-WINDOW GATE) ---
+    // Verifies the optimisation that gates idle cursor advancement behind
+    // total > MAX_CHECK_UPKEEP_SIZE. When the entire registry fits inside one
+    // scan window, checkUpkeep must never return (true, idleAdvance) regardless
+    // of how much time has elapsed — preventing unnecessary LINK consumption.
+
+    /// @dev Exact lower boundary: total == MAX_CHECK_UPKEEP_SIZE must NOT trigger advance.
+    function test_cursorOpt_noIdleAdvance_whenTotalEqualsCheckSize() public {
+        cv = _deployCursorVault(5, 3, 30 seconds);
+        _registerWallets(cv, 5, 0); // total == checkSize
+
+        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
+
+        (bool needed,) = cv.checkUpkeep(bytes(""));
+        assertFalse(needed, "No idle advance when total == MAX_CHECK_UPKEEP_SIZE");
+    }
+
+    /// @dev Below boundary: total < MAX_CHECK_UPKEEP_SIZE must NOT trigger advance.
+    function test_cursorOpt_noIdleAdvance_whenTotalBelowCheckSize() public {
+        cv = _deployCursorVault(5, 3, 30 seconds);
+        _registerWallets(cv, 3, 0); // total < checkSize
+
+        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
+
+        (bool needed,) = cv.checkUpkeep(bytes(""));
+        assertFalse(needed, "No idle advance when total < MAX_CHECK_UPKEEP_SIZE");
+    }
+
+    /// @dev Exact upper boundary: total == MAX_CHECK_UPKEEP_SIZE + 1 MUST trigger advance.
+    function test_cursorOpt_idleAdvanceFires_whenTotalExceedsCheckSizeByOne() public {
+        cv = _deployCursorVault(5, 3, 30 seconds);
+        _registerWallets(cv, 6, 0); // total > checkSize by exactly 1
+
+        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
+
+        (bool needed, bytes memory pd) = cv.checkUpkeep(bytes(""));
+        assertTrue(needed, "Idle advance must fire when total > MAX_CHECK_UPKEEP_SIZE");
+
+        (address[] memory candidates,, bool isIdleAdvance) = abi.decode(pd, (address[], uint256, bool));
+        assertEq(candidates.length, 0, "No due wallets - candidates must be empty");
+        assertTrue(isIdleAdvance, "Must be flagged as idle advance");
+    }
+
+    /// @dev LINK conservation: s_lastCursorAdvance must remain at its initial value (0)
+    ///      across many elapsed intervals when the registry is a single window.
+    ///      A non-zero value would prove a performUpkeep call was incorrectly triggered.
+    function test_cursorOpt_noLinkSpent_acrossMultipleIntervals() public {
+        cv = _deployCursorVault(5, 3, 30 seconds);
+        _registerWallets(cv, 4, 0); // total < checkSize
+
+        for (uint256 i = 0; i < 5; i++) {
+            vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
+            (bool needed,) = cv.checkUpkeep(bytes(""));
+            assertFalse(needed, "checkUpkeep must return false at every interval tick");
+        }
+
+        assertEq(cv.getLastCursorAdvance(), 0, "Advance timestamp must never be written in single-window mode");
+    }
+
+    /// @dev Change 1 (cursor init): a stale s_checkCursor left at a mid-array position
+    ///      must be overridden to 0 when total <= MAX_CHECK_UPKEEP_SIZE, ensuring wallets
+    ///      at low indices are never silently skipped.
+    ///
+    ///      Setup deliberately creates the failure mode of the OLD code:
+    ///        old cursor init: s_checkCursor=3 >= total=4? No → cursor=3 (misses indices 0-2)
+    ///        new cursor init: 3>=4 || 4<=5 → true → cursor=0 (scans all wallets)
+    ///
+    ///      The assertion on candidates.length (3 vs 1) and the presence of users[0]
+    ///      unambiguously distinguishes the two behaviours.
+    function test_cursorOpt_cursorPinnedToZero_despiteStaleCursor() public {
+        cv = _deployCursorVault(5, 3, 30 seconds); // checkSize=5, performSize=3
+
+        (address[] memory users,) = _registerWallets(cv, 4, 0); // total=4 < checkSize=5
+
+        // Simulate a stale cursor at position 3 — as if left from a prior multi-window era.
+        // With old code: cursor=3 → scans [3,4) → finds only users[3] → candidates.length=1.
+        // With new code: total(4) <= checkSize(5) → cursor pinned to 0 → scans [0,4) →
+        //                finds users[0..2] (capped by performSize=3) → candidates.length=3.
+        stdstore.target(address(cv)).sig("getCheckCursor()").checked_write(uint256(3));
+        assertEq(cv.getCheckCursor(), 3, "Precondition: stale cursor written to storage");
+
+        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1); // all 4 wallets due
+
+        (bool needed, bytes memory pd) = cv.checkUpkeep(bytes(""));
+        assertTrue(needed, "Due wallets must be found");
+
+        (address[] memory candidates,,) = abi.decode(pd, (address[], uint256, bool));
+
+        // performSize=3 slots filled from index 0: proves cursor was pinned to 0
+        assertEq(candidates.length, 3, "Cursor pinned to 0 - 3 candidates from indices 0-2");
+
+        // users[0] must be present — it lives at s_registeredWallets[0] and
+        // would be invisible to the old code starting its scan at index 3
+        bool foundFirst = false;
+        for (uint256 i = 0; i < candidates.length; i++) {
+            if (candidates[i] == users[0]) foundFirst = true;
+        }
+        assertTrue(foundFirst, "users[0] must appear in candidates; proves scan started at index 0");
+    }
+
+    /// @dev Recovery execution must be unaffected by the single-window optimisation.
+    ///      Due wallets must still be found, recovered, and funded regardless of
+    ///      whether total <= MAX_CHECK_UPKEEP_SIZE.
+    function test_cursorOpt_recoveryStillWorks_inSingleWindowMode() public {
+        cv = _deployCursorVault(10, 5, 30 seconds);
+        (address[] memory users, address[] memory backups) = _registerWallets(cv, 3, 0);
+        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
+
+        (bool needed, bytes memory pd) = cv.checkUpkeep(bytes(""));
+        assertTrue(needed, "Due wallets found in single-window mode");
+
+        (address[] memory candidates,,) = abi.decode(pd, (address[], uint256, bool));
+        assertEq(candidates.length, 3, "All 3 due wallets returned as candidates");
+
+        cv.performUpkeep(pd);
+
+        assertEq(cv.getTotalRegistered(), 0, "Registry cleared after recovery");
+        for (uint256 i = 0; i < 3; i++) {
+            assertEq(backups[i].balance, 1 ether, "Backup address received funds");
+            assertFalse(cv.getRecoveryConfig(users[i]).isActive, "Wallet marked inactive");
+        }
+    }
+
+    /// @dev Threshold crossing (upward): once total crosses from <= to > MAX_CHECK_UPKEEP_SIZE,
+    ///      idle advancement must resume immediately when CURSOR_ADVANCE_INTERVAL has
+    ///      already elapsed. s_lastCursorAdvance=0 (initial) satisfies the interval
+    ///      condition the moment the gate opens.
+    function test_cursorOpt_advancementResumes_afterCrossingThresholdUpward() public {
+        cv = _deployCursorVault(5, 3, 30 seconds);
+        _registerWallets(cv, 5, 0); // total == checkSize: single-window mode
+
+        // Interval elapses while in single-window mode — advance must NOT fire
+        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
+        (bool suppressedAdvance,) = cv.checkUpkeep(bytes(""));
+        assertFalse(suppressedAdvance, "No advance while total <= MAX_CHECK_UPKEEP_SIZE");
+
+        // One more registration pushes total above the threshold
+        _registerWallets(cv, 1, 100); // total=6 > checkSize=5
+
+        // Interval already elapsed and s_lastCursorAdvance=0 → advance fires immediately
+        (bool needed, bytes memory pd) = cv.checkUpkeep(bytes(""));
+        assertTrue(needed, "Advance fires immediately once total exceeds checkSize");
+
+        (address[] memory candidates,, bool isIdleAdvance) = abi.decode(pd, (address[], uint256, bool));
+        assertEq(candidates.length, 0, "No due wallets");
+        assertTrue(isIdleAdvance, "Must be flagged as idle advance");
+
+        cv.performUpkeep(pd);
+        assertGt(cv.getLastCursorAdvance(), 0, "Advance timestamp written after threshold crossed");
+    }
+
+    /// @dev s_lastCursorAdvance must remain at exactly 0 throughout any number of
+    ///      checkUpkeep and performUpkeep calls triggered by due-wallet recovery
+    ///      while the registry stays in single-window mode. Only idle advance
+    ///      performUpkeep calls are permitted to update this timestamp.
+    function test_cursorOpt_advanceTimestampNeverUpdated_inSingleWindowMode() public {
+        cv = _deployCursorVault(5, 3, 30 seconds);
+
+        // Register exactly performSize wallets so one performUpkeep clears the registry.
+        // Registering 4 previously left 1 due wallet behind after the first pass,
+        // causing the second checkUpkeep to return true (recovery candidate, not idle advance).
+        _registerWallets(cv, 3, 0); // total=3 < checkSize=5, fully drained in one performUpkeep
+
+        // Recovery-triggered performUpkeep must not touch s_lastCursorAdvance
+        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
+        (, bytes memory recPd) = cv.checkUpkeep(bytes(""));
+        cv.performUpkeep(recPd); // isIdleAdvance=false → s_lastCursorAdvance unchanged
+
+        assertEq(
+            cv.getLastCursorAdvance(),
+            0,
+            "Recovery performUpkeep must not update advance timestamp in single-window mode"
+        );
+        assertEq(cv.getTotalRegistered(), 0, "Precondition: registry fully cleared after recovery pass");
+
+        // Re-populate with fresh non-due wallets so the second checkUpkeep is suppressed
+        // by the single-window gate, not just by an empty registry (total==0 early-returns).
+        _registerWallets(cv, 4, 100); // total=4 < checkSize=5, lastActivity = now (not due)
+
+        // Additional time warps must NOT produce an idle advance (single-window gate)
+        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() * 3);
+        (bool stillSuppressed,) = cv.checkUpkeep(bytes(""));
+        assertFalse(stillSuppressed, "checkUpkeep must return false in single-window mode regardless of elapsed time");
+
+        assertEq(cv.getLastCursorAdvance(), 0, "Advance timestamp unchanged after multiple interval warps");
     }
 
     /// SECTION 10. --- PERFORM UPKEEP ---
@@ -1000,7 +1189,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     function test_performUpkeep_setsCheckCursor_toNextCursor() public {
-        cv = _deployCursorVault(4, 2, 30 seconds);
+        cv = _deployCursorVault(3, 2, 30 seconds);
         _registerWallets(cv, 4, 0);
 
         vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
