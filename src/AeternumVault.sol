@@ -400,8 +400,11 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *         CURSOR BEHAVIOUR:
      *           • Due wallets found  → cursor HOLDS at current position.
      *             Next call re-scans the same window until fully cleared.
-     *           • No due wallets     → cursor ADVANCES to next window after
-     *             CURSOR_ADVANCE_INTERVAL seconds have elapsed.
+     *           • No due wallets, total ≤ MAX_CHECK_UPKEEP_SIZE → cursor is pinned
+     *             to 0; the entire registry fits in one window; no LINK is spent
+     *             on idle advancement.
+     *           • No due wallets, total > MAX_CHECK_UPKEEP_SIZE → cursor ADVANCES
+     *             to the next window once CURSOR_ADVANCE_INTERVAL has elapsed.
      *           • Window exhausted   → cursor wraps to 0.
      *
      *         STALE DATA SAFETY:
@@ -423,8 +426,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 total = s_registeredWallets.length;
         if (total == 0) return (false, bytes(""));
 
-        // Wrap cursor if registry has shrunk below it since last advance
-        uint256 cursor = s_checkCursor >= total ? 0 : s_checkCursor;
+        // Wrap cursor if registry has shrunk below it, or if all wallets fit in one scan window
+        uint256 cursor = (s_checkCursor >= total || total <= MAX_CHECK_UPKEEP_SIZE) ? 0 : s_checkCursor;
 
         // Define scan window: [cursor, end)
         uint256 end = cursor + MAX_CHECK_UPKEEP_SIZE;
@@ -469,13 +472,13 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         // Calculate where cursor would move to next
         uint256 nextCursor = (end >= total) ? 0 : end;
 
-        if (block.timestamp >= s_lastCursorAdvance + CURSOR_ADVANCE_INTERVAL) {
-            // Interval elapsed — advance cursor to next window
+        if (total > MAX_CHECK_UPKEEP_SIZE && block.timestamp >= s_lastCursorAdvance + CURSOR_ADVANCE_INTERVAL) {
+            // Registry spans multiple windows — advance cursor to next window
             address[] memory empty = new address[](0);
             return (true, abi.encode(empty, nextCursor, true));
         }
 
-        // Interval not yet elapsed — nothing to do
+        // Single-window registry or interval not yet elapsed — nothing to do
         return (false, bytes(""));
     }
 
