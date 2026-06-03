@@ -72,10 +72,6 @@ aeternum-core/
 ├── docs/
 │   └── Aeternum-core_technical_doc.pdf            ← Protocol technical documentation
 │
-├── crytic-export/                                 ← Crytic/Echidna export artifacts
-│
-├── echidna-corpus/                                ← Echidna fuzzing corpus
-│
 ├── lib/
 │   ├── forge-std                                  ← Foundry standard library
 │   └── openzeppelin-contracts                     ← OpenZeppelin contracts
