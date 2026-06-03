@@ -11,4 +11,5 @@ out/
 .env
 
 # Echidna
-echidna-corpus/covered.1777798269.html
+crytic-export
+echidna-corpus/
