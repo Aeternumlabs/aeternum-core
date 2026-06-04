@@ -593,6 +593,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /// @notice Returns true if a backup address has been permanently blocked
     ///         due to rejecting ETH across MAX_RECOVERY_ATTEMPTS recoveries.
+    /// @param backup The backup address to query.
     function isBackupAbandoned(address backup) external view returns (bool) {
         return s_abandonedBackupAddresses[backup];
     }
