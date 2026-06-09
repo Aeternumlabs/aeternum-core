@@ -80,7 +80,11 @@ aeternum-core/
 ├── foundry.lock                                   ← Foundry dependency lockfile
 ├── foundry.toml                                   ← Foundry configuration
 ├── .solhint.json                                  ← Solhint linting rules
-└── .env.example                                   ← Environment variable template
+├── .env.example                                   ← Environment variable template
+├── README.md                                      ← Project overview and documentation
+├── CONTRIBUTING.md                                ← Contribution guidelines
+├── LICENSE.md                                     ← License (BUSL 1.1)
+└── SECURITY.md                                    ← Security policy and vulnerability disclosure
 ```
 
 ## Trust Model
