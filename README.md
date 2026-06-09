@@ -350,4 +350,4 @@ After deployment:
 
 ## License 
 
-Aeternum Core is source-available and licensed under the Business Source License 1.1 (BUSL-1.1). The protocol will automatically transition to GNU General Public License, version 3.0 or later, the earlier of (a) four years from the date of the first production deployment of the Licensed Work on the Ethereum Mainnet, or (b) January 1, 2031.
+AeternumVault V1 is source-available and licensed under the Business Source License 1.1 (BUSL-1.1). The protocol will automatically transition to GNU General Public License, version 3.0 or later, the earlier of (a) four years from the date of the first production deployment of the Licensed Work on the Ethereum Mainnet, or (b) January 1, 2031.
