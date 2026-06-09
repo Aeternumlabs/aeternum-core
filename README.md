@@ -3,7 +3,7 @@
 [![Lint](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/lint.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/lint.yml) 
 [![Tests](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml)
 [![Slither](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/slither.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/slither.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License: BUSL 1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](./LICENSE)
 
 A trustless smart wallet vault with built-in automated ETH recovery.
 
@@ -346,4 +346,4 @@ After deployment:
 
 ## License 
 
-Aeternum Core is licensed under the MIT License.
+Aeternum Core is source-available and licensed under the Business Source License 1.1 (BUSL-1.1). The protocol will automatically transition to GNU General Public License, version 3.0 or later, the earlier of (a) four years from the date of the first production deployment of the Licensed Work on the Ethereum Mainnet, or (b) January 1, 2031.
