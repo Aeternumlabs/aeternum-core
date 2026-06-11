@@ -338,7 +338,7 @@ After deployment:
 
 ### Internal audit report
 
-- [Aeternum-core audit report](audits/2026-05-04_Aeternum-core_audit.pdf)
+- [Aeternum-core audit report](audits/2026-06-03_Aeternum_Smart_Contract_Audit_Report.pdf)
 
 ### External audit report
 
