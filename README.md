@@ -106,7 +106,7 @@ The user calls `register()` with a backup address and inactivity period. ETH dep
 
 The vault behaves like a normal wallet. Users can `deposit()` ETH, `send()` ETH to any address, `withdrawAll()` back to themselves, and update their recovery configuration at any time. Every interaction resets the inactivity timer — proving liveness to the contract.
 
-**3. Stay alive**
+**3. Stay active**
 
 If a user wants to prove liveness without moving funds, they call `ping()` — a single cheap storage write that resets the timer.
 
