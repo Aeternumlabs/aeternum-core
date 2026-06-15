@@ -91,8 +91,8 @@ contract HelperConfig is Script {
      *      Chainlink Automation behaviour observed on Sepolia is a faithful preview
      *      of mainnet execution — same batch sizing, same recovery attempts, same gas profile.
      *
-     *      Min inactivity period and cursor advance interval are intentionally shortened to 
-     *      5 minutes and 30 seconds respectively 
+     *      Min inactivity period and cursor advance interval are intentionally shortened to
+     *      5 minutes and 30 seconds respectively
      *      so recovery flows can be triggered and observed within a single QA session
      *      without waiting for production-scale windows.
      */
