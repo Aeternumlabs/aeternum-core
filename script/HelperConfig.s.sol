@@ -87,14 +87,14 @@ contract HelperConfig is Script {
     /**
      * @dev Sepolia testnet.
      *
-     *      Mirrors mainnet automation parameters exactly (MAX_CHECK_UPKEEP_SIZE = 5000,
-     *      MAX_PERFORM_UPKEEP_SIZE = 50, CURSOR_ADVANCE_INTERVAL = 1 hour) so that
+     *      Mirrors most mainnet automation parameters exactly so that
      *      Chainlink Automation behaviour observed on Sepolia is a faithful preview
-     *      of mainnet execution — same batch sizing, same cursor cadence, same gas profile.
+     *      of mainnet execution — same batch sizing, same recovery attempts, same gas profile.
      *
-     *      Min inactivity period is intentionally shortened (5 min)
+     *      Min inactivity period and cursor advance interval are intentionally shortened to 
+     *      5 minutes and 30 seconds respectively 
      *      so recovery flows can be triggered and observed within a single QA session
-     *      without waiting for production-scale inactivity windows.
+     *      without waiting for production-scale windows.
      */
     function _getSepoliaConfig() internal pure returns (VaultConfig memory) {
         return VaultConfig({
@@ -103,7 +103,7 @@ contract HelperConfig is Script {
             maxCheckUpkeepSize: 5000,
             maxPerformUpkeepSize: 50,
             maxRecoveryAttempts: 3,
-            cursorAdvanceInterval: 1 hours
+            cursorAdvanceInterval: 30 seconds
         });
     }
 
@@ -118,7 +118,7 @@ contract HelperConfig is Script {
             maxCheckUpkeepSize: 5000,
             maxPerformUpkeepSize: 50,
             maxRecoveryAttempts: 3,
-            cursorAdvanceInterval: 1 hours
+            cursorAdvanceInterval: 30 seconds
         });
     }
 

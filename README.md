@@ -134,7 +134,7 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 | `MAX_CHECK_UPKEEP_SIZE` | 5,000 | Maximum wallets scanned per `checkUpkeep` call (off-chain simulation, no gas constraint) |
 | `MAX_PERFORM_UPKEEP_SIZE` | 50 | Maximum wallets recovered per `performUpkeep` call (on-chain execution, gas-bound) |
 | `MAX_RECOVERY_ATTEMPTS` | 3 | Consecutive failed recovery attempts before a vault is permanently abandoned |
-| `CURSOR_ADVANCE_INTERVAL` | 1 hour | Minimum time between idle cursor advances when no wallets are due |
+| `CURSOR_ADVANCE_INTERVAL` | 1 hour (30 seconds for testnet) | Minimum time between idle cursor advances when no wallets are due |
 
 ## Dependencies
 
