@@ -7,7 +7,7 @@
 
 A non-custodial, automated inheritance protocol for Ethereum assets.
 
-Aeternum Core lets users store ETH in a self-sovereign vault, send and receive funds like a normal wallet, and configure a backup address with an inactivity timer. If the user goes silent beyond their chosen period — lost keys, death, incapacitation — Chainlink Automation transfers their ETH to the backup address automatically. No custodians. No admin backdoors. Just code.
+Aeternum Core lets users store ETH in a self-sovereign vault, send and receive funds like a normal wallet, and configure a backup address with an inactivity timer. If the user goes silent beyond their chosen period — lost keys, death, incapacitation — the protocol automatically transfers their ETH to the backup address. No custodians. No admin backdoors. Just code.
 
 ## Table of Contents
 
@@ -20,14 +20,14 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 - [Dependencies](#dependencies)
 - [Quickstart](#quickstart)
 - [Development](#development)
-- [Chainlink Automation Setup](#chainlink-automation-setup)
+- [Post-Deployment](#post-deployment)
 - [Security](#security)
 - [Audit](#audit)
 - [License](#license)
 
 ## Architecture
 
-Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Chainlink Automation nodes monitor all registered vaults off-chain and execute recovery on-chain only when inactivity conditions are met.
+Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Recovery is triggered via a permissionless `triggerRecovery(wallet)` function. The Aeternum keeper bot monitors all registered vaults via the Ponder indexer and submits recovery transactions automatically when inactivity conditions are met. Because the entry point is permissionless, any external actor can also submit recovery — the contract enforces all safety conditions independently of who calls it.
 
 ```
 AeternumVault
@@ -37,9 +37,9 @@ AeternumVault
 │   ├── inactivityPeriod — seconds before recovery triggers
 │   └── lastActivity     — timestamp of last on-chain interaction
 │
-└── Chainlink Automation
-    ├── checkUpkeep()    — off-chain simulation, finds due wallets
-    └── performUpkeep()  — on-chain execution, transfers ETH to backup
+└── Keeper Interface (permissionless)
+    ├── triggerRecovery(wallet)         — permissionless recovery entry point
+    └── checkVaultsBatch(start, size)   — batch view for efficient keeper scanning
 ```
 
 ## Repository Structure
@@ -49,18 +49,17 @@ aeternum-core/
 ├── src/
 │   ├── AeternumVault.sol                          ← Core contract
 │   └── interfaces/
-│       ├── IAeternumVault.sol                     ← Full interface (events, errors, structs, functions)
-│       └── AutomationCompatibleInterface.sol      ← Inlined Chainlink interface
+│       └── IAeternumVault.sol                     ← Full interface (events, errors, structs, functions)
 │
 ├── test/
 │   ├── unit/
 │   │   └── AeternumVault.t.sol                    ← Unit, fuzz, and invariant tests
-│   ├── echidna/
+│   ├── invariant/
 │   │   └── AeternumVaultEchidna.sol               ← Echidna property-based fuzzing suite
 │   └── mocks/
 │       ├── ReentrantAttacker.sol                  ← Reentrancy security test helper
 │       ├── RejectingReceiver.sol                  ← Failed recovery simulation helper
-│       └── RejectingCallerMock.sol                ← Transfer failure simulation (withdrawAll/cancel)       
+│       └── RejectingCallerMock.sol                ← Transfer failure simulation (withdrawAll/cancel)
 │
 ├── script/
 │   ├── Deploy.s.sol                               ← Deployment script with post-deploy checks
@@ -92,8 +91,8 @@ aeternum-core/
 | Actor | Can Do | Cannot Do |
 |---|---|---|
 | **User** | Register, deposit, send, withdrawAll, ping, update config, cancel | Access other users' funds |
-| **Chainlink Automation** | Call `performUpkeep` via the registered forwarder when inactivity conditions are met | Alter configs or redirect funds |
-| **Anyone** | Call `checkUpkeep` (read-only, off-chain simulation) | Call `performUpkeep` once forwarder is set |
+| **Aeternum keeper bot** | Call `triggerRecovery(wallet)` when inactivity conditions are met | Alter configs, redirect funds, or trigger early recovery |
+| **Anyone** | Call `triggerRecovery(wallet)` (permissionless) and `checkVaultsBatch` (view) | Force recovery before the inactivity period elapses |
 | **No one** | — | Pause recovery, upgrade the contract, or access user funds |
 
 ## How It Works
@@ -112,29 +111,23 @@ If a user wants to prove liveness without moving funds, they call `ping()` — a
 
 **4. Recovery triggers**
 
-Chainlink Automation polls `checkUpkeep()` off-chain every ~12 seconds. When a vault's 
-inactivity period has elapsed and its balance is non-zero, the Automation node submits 
-`performUpkeep()` on-chain via the registered forwarder contract, transferring the ETH 
-to the backup address. 
+The Aeternum keeper bot continuously monitors all registered vaults via the Ponder indexer. When a vault's inactivity period has elapsed and its balance is non-zero, the bot calls `triggerRecovery(wallet)`, transferring the escrowed ETH to the registered backup address. The function is permissionless — any external actor, including the beneficiary, can also submit the call. The contract validates all conditions independently of the caller.
 
 **5. Failed recovery**
 
-If a backup address cannot receive ETH (e.g. a contract that rejects transfers), the failure is counted. After `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is deregistered but the balance remains fully accessible — the user can still `send()` or `withdrawAll()` at any time, and can re-register but with a new backup address.
+If a backup address cannot receive ETH (e.g. a contract that rejects transfers), the failure is counted. After `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is deregistered and the balance remains fully accessible — the user can still `send()` or `withdrawAll()` at any time, and can re-register with a new backup address.
 
 **6. Cancel anytime**
 
 Users can call `cancelRecovery()` at any time to withdraw their full balance and deregister from monitoring in a single transaction.
 
-## Immutable variables
+## Immutable Variables
 
-| Immutable variable | Value | Description |
+| Immutable Variable | Value | Description |
 |---|---|---|
 | `MIN_INACTIVITY_PERIOD` | 180 days (5 minutes for testnet) | Minimum inactivity period users are allowed to configure |
 | `MAX_INACTIVITY_PERIOD` | 3650 days | Maximum allowed inactivity period to prevent permanent fund lockup |
-| `MAX_CHECK_UPKEEP_SIZE` | 5,000 | Maximum wallets scanned per `checkUpkeep` call (off-chain simulation, no gas constraint) |
-| `MAX_PERFORM_UPKEEP_SIZE` | 50 | Maximum wallets recovered per `performUpkeep` call (on-chain execution, gas-bound) |
 | `MAX_RECOVERY_ATTEMPTS` | 3 | Consecutive failed recovery attempts before a vault is permanently abandoned |
-| `CURSOR_ADVANCE_INTERVAL` | 1 hour (30 seconds for testnet) | Minimum time between idle cursor advances when no wallets are due |
 
 ## Dependencies
 
@@ -161,10 +154,9 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
   pip install slither-analyzer --break-system-packages
   ```
 
-- **[Echidna](https://github.com/crytic/echidna)** — Property-based fuzz test
+- **[Echidna](https://github.com/crytic/echidna)** — Property-based fuzz testing
 
   ```bash
-  # install from docker
   docker pull ghcr.io/crytic/echidna/echidna
   ```
 
@@ -202,7 +194,6 @@ forge install
 ### 3. Set environment variables
 
 ```bash
-# Copy .env.example file to .env and fill in values
 cp .env.example .env
 ```
 
@@ -224,7 +215,7 @@ forge test -vv
 forge test --gas-report
 
 # Specific test
-forge test --match-test test_performUpkeep_executesRecovery -vvvv
+forge test --match-test test_triggerRecovery_executesRecovery -vvvv
 
 # Fuzz tests only
 forge test --match-test testFuzz -vv
@@ -236,8 +227,7 @@ forge test --match-test invariant -vv
 ### Coverage
 
 ```bash
-# Generate a table showing test coverage percentages
-forge coverage 
+forge coverage
 ```
 
 ### Static Analysis
@@ -251,21 +241,23 @@ slither src/AeternumVault.sol \
 solhint src/AeternumVault.sol
 ```
 
-### Property-Based Fuzz Test
+### Property-Based Fuzz Testing
 
 ```bash
-# create Echidna alias
+# Create Echidna alias
 alias echidna='docker run --rm -v $(pwd):/src -w /src ghcr.io/crytic/echidna/echidna echidna'
 source ~/.bashrc
 
-# Fuzz
-echidna test/echidna/AeternumVaultEchidna.sol --contract AeternumVaultEchidna --config echidna.config.yml
+# Run property-based fuzzing
+echidna test/invariant/AeternumVaultEchidna.sol \
+  --contract AeternumVaultEchidna \
+  --config echidna.config.yml
 ```
 
 ### Deployment
 
 ```bash
-# Import your private key into Foundry’s local keystore
+# Import your private key into Foundry's local keystore
 cast wallet import private-key --interactive
 
 # Dry run — Sepolia
@@ -282,7 +274,7 @@ forge script script/Deploy.s.sol \
   --verify \
   -vvvv
 
-# Dry run — Mainnet
+# Dry run — Mainnet (always run before broadcasting)
 forge script script/Deploy.s.sol \
   --rpc-url $MAINNET_RPC_URL \
   -vvvv
@@ -297,19 +289,15 @@ forge script script/Deploy.s.sol \
   -vvvv
 ```
 
-## Chainlink Automation Setup
+## Post-Deployment
 
-After deployment:
+After deploying the contract:
 
-1. Go to [automation.chain.link](https://automation.chain.link) and connect your wallet
-2. Click **Register new upkeep** → select **Custom Logic**
-3. Set the target contract to your deployed `AeternumVault` address
-4. `checkData` should be empty
-5. Set gas limit to `500000`
-6. Fund the upkeep with LINK tokens from [faucets.chain.link](https://faucets.chain.link) (Sepolia)
-7. After registration, open your upkeep details and copy the **Forwarder** address
-8. Call `setForwarder(forwarderAddress)` on your deployed contract — this permanently locks
-   `performUpkeep` so only Chainlink's forwarder can call it. This can only be set once.
+1. Copy the deployed contract address into `.env` as `CONTRACT_ADDRESS`.
+2. Set `NEXT_PUBLIC_SEPOLIA_CONTRACT_ADDRESS` in the frontend `.env`.
+3. Update the Ponder indexer start block and contract address in `ponder.config.ts`.
+4. Start the keeper bot, pointing it at the deployed contract address and the running Ponder instance. The bot begins monitoring immediately — no on-chain registration required.
+5. Verify end-to-end: register a test vault with the minimum inactivity period, wait for expiry, and confirm the keeper bot submits `triggerRecovery` and the ETH reaches the backup address.
 
 ## Security
 
@@ -318,29 +306,23 @@ After deployment:
 - **Checks-Effects-Interactions (CEI)** enforced on all ETH-transferring paths
 - **ReentrancyGuard** applied as a secondary defence layer on all state-changing functions
 - **No admin backdoors** — the contract contains no owner or privileged roles capable of pausing recovery, redirecting funds, or accessing user balances
-- **Chainlink forwarder gating** — once `setForwarder()` is called post-deployment, 
-  `performUpkeep()` rejects all callers except the designated Chainlink Automation 
-  forwarder address. The setter is callable exactly once and locks permanently.
-- **Stale `performData` safety** — `_executeRecovery` re-validates every wallet before acting; stale or already-recovered entries are silently skipped
-- **O(1) registry removal** — swap-and-pop with 1-indexed mappings prevents array corruption during batch removals
-- **Failed recovery handling** — after `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is abandoned and balance remains self-claimable
+- **Permissionless entry point safety** — `triggerRecovery(wallet)` delegates entirely to `_executeRecovery`, which re-validates all conditions from storage before acting. The caller supplies only a wallet address — they cannot redirect funds, force early recovery, or cause double-spend regardless of who they are
+- **O(1) registry removal** — swap-and-pop with 1-indexed mappings prevents array corruption during concurrent recovery and cancellation
+- **Failed recovery handling** — after `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is permanently abandoned and the balance remains self-claimable via `withdrawAll()` or `send()`
 - **Direct ETH transfer rejection** — `receive()` explicitly reverts, preventing accidental ETH loss
 
 ### Known Considerations
 
 - `block.timestamp` is used for inactivity comparisons. Validator manipulation is bounded to ~12 seconds — negligible for inactivity periods measured in days and months.
-- External ETH transfers inside a loop in `performUpkeep` are acknowledged (Slither: calls-loop). Mitigated by `nonReentrant`, CEI pattern, re-validation per iteration, and `MAX_PERFORM_UPKEEP_SIZE`
-- `_executeRecovery` restores state after a failed ETH transfer (Slither: reentrancy-eth). 
-  Silenced and acknowledged — exploitation is prevented by `nonReentrant` on `performUpkeep`, 
-  balance zeroing before the call, and permanent abandonment after 3 consecutive failures.
+- The external ETH transfer in `_executeRecovery` is acknowledged (Slither: reentrancy-eth). Exploitation is prevented by `nonReentrant` on `triggerRecovery`, balance zeroing before the call (CEI), and permanent abandonment after `MAX_RECOVERY_ATTEMPTS` consecutive failures — eliminating the retry loop entirely.
 
 ## Audit
 
-### Internal audit report
+### Internal Audit Report
 
 - [Aeternum-core audit report](audits/2026-06-03_Aeternum_Smart_Contract_Audit_Report.pdf)
 
-### External audit report
+### External Audit Report
 
 > Pending — targeting external audit engagement prior to mainnet deployment.
 
@@ -348,6 +330,6 @@ After deployment:
 
 > Details to be announced.
 
-## License 
+## License
 
 AeternumVault V1 is source-available and licensed under the Business Source License 1.1 (BUSL-1.1). The protocol will automatically transition to GNU General Public License, version 3.0 or later, the earlier of (a) four years from the date of the first production deployment of the Licensed Work on the Ethereum Mainnet, or (b) January 1, 2031.
