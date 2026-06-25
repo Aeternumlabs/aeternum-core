@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IAeternumVault} from "./interfaces/IAeternumVault.sol";
-import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleInterface.sol";
 
 /**
  * @title  AeternumVault
@@ -18,17 +17,41 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *         2. The contract tracks each user's `lastActivity` timestamp. Any on-chain
  *            interaction with this contract (ping, deposit, withdraw, config update)
  *            resets the timer.
- *         3. Chainlink Automation periodically calls `checkUpkeep()`. When a wallet's
- *            inactivity period has elapsed and its balance is non-zero, the Automation
- *            node calls `performUpkeep()` to transfer the escrowed ETH to the backup
- *            address.
+ *         3. When a wallet's inactivity period elapses and its balance is non-zero,
+ *            any external actor may call `triggerRecovery(wallet)` to transfer the
+ *            escrowed ETH to the registered backup address. The Aeternum keeper
+ *            bot monitors all registered wallets via the Ponder indexer and calls
+ *            this function automatically, ensuring fully automated recovery without
+ *            any action required from users or beneficiaries. The function is
+ *            permissionless as a liveness guarantee: if the primary keeper is
+ *            unavailable, any party — including the beneficiary — may call it.
  *         4. Users may cancel at any time via `cancelRecovery()`, which refunds their
  *            entire balance and removes them from monitoring.
+ *
+ *         KEEPER ARCHITECTURE
+ *         ─────────────────────────────────────────────────────────────────────
+ *         Phase 1: Aeternum Labs operates a keeper bot as a public good. The bot
+ *           monitors all registered wallets via the Ponder indexer and calls
+ *           `triggerRecovery(wallet)` when conditions are met. Gas costs are
+ *           absorbed as a protocol operating expense. No third-party dependency.
+ *
+ *         Phase 2: Gelato Network added as a decentralised backup keeper alongside
+ *           the Aeternum Labs bot. Independent failure modes guarantee liveness.
+ *           `triggerRecovery` interface is unchanged.
+ *
+ *         Phase 3: CRE (Chainlink Runtime Environment) added for cross-chain vault
+ *           coordination. `triggerRecovery(wallet)` remains the single entry point
+ *           on all chains — CRE is simply another permissionless caller.
  *
  *         TRUST MODEL
  *         ─────────────────────────────────────────────────────────────────────
  *         • No admin or owner to pause recovery, redirect funds, or change user configs.
- *         • Recovery execution is fully autonomous and permissionless via Chainlink Automation.
+ *         • Recovery is automated by the Aeternum keeper bot and permissionless
+ *           at the contract level — any actor may call `triggerRecovery(wallet)`.
+ *         • The caller of `triggerRecovery` cannot redirect funds, force early
+ *           recovery, or cause double-spend. All safety decisions are made exclusively
+ *           from storage written by the vault owner. The caller is a trigger,
+ *           not an authority.
  *         • All state changes follow the Checks-Effects-Interactions (CEI) pattern.
  *         • ReentrancyGuard provides a secondary reentrancy defence layer.
  *
@@ -36,14 +59,19 @@ import {AutomationCompatibleInterface} from "./interfaces/AutomationCompatibleIn
  *         ─────────────────────────────────────────────────────────────────────
  *         • Reentrancy: guarded by ReentrancyGuard + CEI on all ETH-transferring paths.
  *         • Integer overflow: Solidity ≥0.8 reverts on overflow by default.
- *         • Batch safety: `performUpkeep` re-validates every wallet before acting;
- *           stale `performData` is silently skipped rather than reverted.
+ *         • Permissionless safety: `triggerRecovery` delegates entirely to
+ *           `_executeRecovery`, which re-validates all conditions before acting.
+ *           The caller supplies only a wallet address — they control nothing about
+ *           whether, when, how much, or where funds move.
+ *         • Silent return: `triggerRecovery` does not revert when conditions are
+ *           unmet, so competing keepers do not waste gas on already-executed
+ *           recoveries or ineligible wallets.
  *         • Array manipulation: swap-and-pop O(1) removal keeps indices consistent
- *           across batch recovery iterations.
+ *           across concurrent recovery executions.
  *         • Direct ETH transfers: a `receive()` function explicitly reverts with a
  *           clear error, preventing accidental ETH loss.
  */
-contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleInterface {
+contract AeternumVault is IAeternumVault, ReentrancyGuard {
     /// --- IMMUTABLES ---
     /// @notice Minimum inactivity period allowed.
     uint256 public immutable MIN_INACTIVITY_PERIOD;
@@ -51,36 +79,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     /// @notice Hard ceiling on inactivity period (prevents permanent lock-up).
     uint256 public immutable MAX_INACTIVITY_PERIOD;
 
-    /**
-     * @notice Maximum wallets scanned per `checkUpkeep` call (off-chain simulation).
-     * @dev    Runs entirely off-chain in Chainlink's simulation environment.
-     *         No block gas limit constraint. Set high (e.g. 5000) for wide registry
-     *         coverage per tick. Chainlink's simulation gas limit (~6.5M) comfortably
-     *         supports 5000 × ~800 gas (SLOAD per wallet) = ~4M gas.
-     */
-    uint256 public immutable MAX_CHECK_UPKEEP_SIZE;
-
-    /**
-     * @notice Maximum wallets recovered per `performUpkeep` call (on-chain execution).
-     * @dev    Subject to Ethereum block gas limit. Each `_executeRecovery` worst-case
-     *         consumes ~100k gas (SSTOREs + external ETH call + events + retry logic).
-     *         At 50 wallets: ~5M gas — safe headroom under the 30M block gas limit.
-     *         Keep this at 50 for mainnet. L2 deployments can raise it.
-     */
-    uint256 public immutable MAX_PERFORM_UPKEEP_SIZE;
-
     /// @notice Maximum consecutive failed recovery attempts before a wallet is abandoned.
     uint8 public immutable MAX_RECOVERY_ATTEMPTS;
-
-    /**
-     * @notice Minimum seconds between cursor advances when no wallets are due.
-     * @dev    Controls how frequently idle windows advance to cover the full registry.
-     *         Mainnet: 1 hour  → 24 on-chain calls/day (affordable).
-     *         Sepolia/Anvil: 30 seconds → fast iteration for testing.
-     *         Immutable by design — tune per network at deploy time.
-     *         Phase 2 multichain deployments will use chain-appropriate values.
-     */
-    uint256 public immutable CURSOR_ADVANCE_INTERVAL;
 
     /// --- STATE VARIABLES ---
     /// @dev Primary configuration store. Key: registered wallet address.
@@ -88,8 +88,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /**
      * @dev Ordered list of all registered wallet addresses.
-     *      Iterated by `checkUpkeep`; mutated by `_removeFromRegistry` using
-     *      swap-and-pop to maintain O(1) removal.
+     *      Consumed by `checkVaultsBatch` for keeper scanning; mutated by
+     *      `_removeFromRegistry` using swap-and-pop for O(1) removal.
      */
     address[] private s_registeredWallets;
 
@@ -101,35 +101,14 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     mapping(address => uint256) private s_walletIndexPlusOne;
 
     /**
-     * @dev Backup addresses that have been proven to reject ETH after MAX_RECOVERY_ATTEMPTS.
-     *      Any registration or backup update pointing to these addresses is permanently blocked.
+     * @dev Backup addresses proven to reject ETH after MAX_RECOVERY_ATTEMPTS.
+     *      Any registration or backup update pointing to these addresses is
+     *      permanently blocked.
      */
     mapping(address => bool) private s_abandonedBackupAddresses;
 
-    /**
-     * @dev Rolling scan cursor. Tracks which registry index the next `checkUpkeep`
-     *      scan window begins from. Advanced by `performUpkeep` when a window is clear.
-     *      Wraps to 0 when the end of the registry is reached.
-     */
-    uint256 private s_checkCursor;
-
-    /**
-     * @dev Timestamp of the last cursor advancement (idle case only).
-     *      Updated by `performUpkeep` when `nextCursor != currentCursor`.
-     *      NOT updated during recovery passes (cursor holds position).
-     *      Gates idle advancement via CURSOR_ADVANCE_INTERVAL.
-     */
-    uint256 private s_lastCursorAdvance;
-
-    /**
-     * @dev Chainlink Automation forwarder address for this upkeep.
-     *      Set once via setForwarder() after upkeep registration.
-     *      Once set, only this address may call performUpkeep().
-     */
-    address private s_forwarder;
-
     /// --- MODIFIERS ---
-    /// @dev Reverts if the caller does not have an active recovery config.
+    /// @dev Reverts if the caller does not have an active or abandoned recovery config.
     modifier onlyRegistered() {
         if (!s_configs[msg.sender].isActive && !s_configs[msg.sender].isAbandoned) {
             revert AeternumVault__NotRegistered();
@@ -141,37 +120,18 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     /**
      * @notice Initialises the vault with all immutable configuration.
      *
-     * @param minInactivityPeriod_    Minimum inactivity period (seconds).
-     * @param maxInactivityPeriod_    Hard ceiling on inactivity period (seconds).
-     * @param maxCheckUpkeepSize_     Max wallets scanned per checkUpkeep (off-chain).
-     * @param maxPerformUpkeepSize_   Max wallets recovered per performUpkeep (on-chain).
-     * @param maxRecoveryAttempts_    Max failed attempts before a wallet is abandoned.
-     * @param cursorAdvanceInterval_  Seconds between idle cursor advances.
+     * @param minInactivityPeriod_  Minimum inactivity period (seconds).
+     * @param maxInactivityPeriod_  Hard ceiling on inactivity period (seconds).
+     * @param maxRecoveryAttempts_  Max consecutive failed attempts before abandonment.
      */
-    constructor(
-        uint256 minInactivityPeriod_,
-        uint256 maxInactivityPeriod_,
-        uint256 maxCheckUpkeepSize_,
-        uint256 maxPerformUpkeepSize_,
-        uint8 maxRecoveryAttempts_,
-        uint256 cursorAdvanceInterval_
-    ) {
-        // Validations
+    constructor(uint256 minInactivityPeriod_, uint256 maxInactivityPeriod_, uint8 maxRecoveryAttempts_) {
         if (minInactivityPeriod_ == 0) revert AeternumVault__InvalidInactivityPeriod();
         if (maxInactivityPeriod_ < minInactivityPeriod_) revert AeternumVault__InvalidInactivityPeriod();
-        if (maxCheckUpkeepSize_ == 0) revert AeternumVault__InvalidConstructorParam();
-        if (maxPerformUpkeepSize_ == 0) revert AeternumVault__InvalidConstructorParam();
-        if (maxPerformUpkeepSize_ > maxCheckUpkeepSize_) revert AeternumVault__MaxPerformUpkeepSizeExceeded();
         if (maxRecoveryAttempts_ == 0) revert AeternumVault__MaxRecoveryAttemptsExceeded();
-        if (cursorAdvanceInterval_ == 0) revert AeternumVault__InvalidConstructorParam();
 
-        // Assignments
         MIN_INACTIVITY_PERIOD = minInactivityPeriod_;
         MAX_INACTIVITY_PERIOD = maxInactivityPeriod_;
-        MAX_CHECK_UPKEEP_SIZE = maxCheckUpkeepSize_;
-        MAX_PERFORM_UPKEEP_SIZE = maxPerformUpkeepSize_;
         MAX_RECOVERY_ATTEMPTS = maxRecoveryAttempts_;
-        CURSOR_ADVANCE_INTERVAL = cursorAdvanceInterval_;
     }
 
     /// --- USER-FACING FUNCTIONS ---
@@ -184,15 +144,16 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *         Emits {RecoveryRegistered} and, if ETH is deposited, {Deposited}.
      *
      * @param backupAddress    Address that will receive funds if recovery is triggered.
-     *                         Must not be zero, the caller's own address, or abandoned backup address.
+     *                         Must not be zero, the caller's own address, or an
+     *                         abandoned backup address.
      * @param inactivityPeriod Seconds without activity before recovery executes.
      */
     function register(address backupAddress, uint256 inactivityPeriod) external payable nonReentrant {
         // Checks
         if (s_configs[msg.sender].isActive) revert AeternumVault__AlreadyRegistered();
         if (s_abandonedBackupAddresses[backupAddress]) revert AeternumVault__WalletAbandoned();
-        // If wallet was abandoned and user skipped withdrawAll(), preserve the
-        // existing balance so it isn't permanently locked in the contract.
+        // If wallet was previously abandoned and user skipped withdrawAll(), carry
+        // the existing balance forward so it is not permanently locked in the contract.
         uint256 carriedBalance = s_configs[msg.sender].isAbandoned ? s_configs[msg.sender].balance : 0;
         if (backupAddress == address(0) || backupAddress == msg.sender) {
             revert AeternumVault__InvalidBackupAddress();
@@ -215,7 +176,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         s_registeredWallets.push(msg.sender);
         s_walletIndexPlusOne[msg.sender] = s_registeredWallets.length; // 1-indexed
 
-        // Emit
         emit RecoveryRegistered(msg.sender, backupAddress, inactivityPeriod);
         if (msg.value > 0) {
             emit Deposited(msg.sender, msg.value);
@@ -230,10 +190,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      *         Emits {Deposited} and {ActivityPinged}.
      */
     function deposit() external payable onlyRegistered nonReentrant {
-        // Check
         if (msg.value == 0) revert AeternumVault__InvalidAmount();
 
-        // Effects
         s_configs[msg.sender].balance += msg.value;
         s_configs[msg.sender].lastActivity = block.timestamp;
 
@@ -251,7 +209,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         RecoveryConfig storage config = s_configs[msg.sender];
         uint256 amount = config.balance;
 
-        // Check
         if (amount == 0) revert AeternumVault__InvalidAmount();
 
         // Effects
@@ -268,8 +225,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /**
      * @notice Send ETH from the vault to any external address.
-     * @dev    This is the core "wallet send" function — allows the vault to behave
-     *         like a regular wallet where you can send funds to anyone.
+     * @dev    Allows the vault to behave like a regular wallet — the user can send
+     *         funds to any recipient directly from escrow.
      *         Resets the inactivity timer (proves liveness).
      *         Uses CEI: balance updated before the external ETH transfer.
      *         Emits {Sent} and {ActivityPinged}.
@@ -278,7 +235,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      * @param amount Amount to send in wei. Must be ≤ caller's vault balance.
      */
     function send(address to, uint256 amount) external onlyRegistered nonReentrant {
-        // Checks
         if (to == address(0)) revert AeternumVault__InvalidAddress();
         if (amount == 0) revert AeternumVault__InvalidAmount();
 
@@ -299,8 +255,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /**
      * @notice Reset the inactivity timer without moving any funds.
-     * @dev    This is the cheapest way to signal liveness. The watcher service
-     *         will remind users to call this before their inactivity period elapses.
+     * @dev    The cheapest way to signal liveness. The Aeternum Labs watcher
+     *         service alerts users before their inactivity period elapses.
      *         Emits {ActivityPinged}.
      */
     function ping() external onlyRegistered {
@@ -313,13 +269,13 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      * @dev    Resets the inactivity timer as a side-effect (proves liveness).
      *         Emits {BackupAddressUpdated} and {ActivityPinged}.
      *
-     * @param newBackupAddress New destination. Must not be zero or the caller's own address.
+     * @param newBackupAddress New destination. Must not be zero, the caller's own
+     *                         address, or an abandoned backup address.
      */
     function updateBackupAddress(address newBackupAddress) external onlyRegistered {
         if (newBackupAddress == address(0) || newBackupAddress == msg.sender) {
             revert AeternumVault__InvalidBackupAddress();
         }
-
         if (s_abandonedBackupAddresses[newBackupAddress]) {
             revert AeternumVault__WalletAbandoned();
         }
@@ -333,10 +289,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /**
      * @notice Change the inactivity period.
-     * @dev    The new period must remain within the enforced
-     *         minimum and maximum inactivity bounds.
-     *         Resets the inactivity timer, signalling
-     *         fresh wallet activity.
+     * @dev    The new period must remain within MIN_INACTIVITY_PERIOD and
+     *         MAX_INACTIVITY_PERIOD. Resets the inactivity timer.
      *         Emits {InactivityPeriodUpdated} and {ActivityPinged}.
      *
      * @param newPeriod New inactivity period in seconds.
@@ -347,7 +301,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         }
 
         RecoveryConfig storage config = s_configs[msg.sender];
-
         config.inactivityPeriod = newPeriod;
         config.lastActivity = block.timestamp;
 
@@ -357,9 +310,10 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /**
      * @notice Cancel recovery and withdraw all escrowed ETH in one transaction.
-     * @dev    Permanently removes the caller from monitoring.
-     *         A re-registration after cancellation is allowed.
-     *         Uses CEI: deregistration and balance zeroing occur before the ETH transfer.
+     * @dev    Permanently removes the caller from monitoring. Re-registration
+     *         after cancellation is allowed.
+     *         Uses CEI: deregistration and balance zeroing occur before the ETH
+     *         transfer.
      *         Emits {RecoveryCancelled}.
      */
     function cancelRecovery() external onlyRegistered nonReentrant {
@@ -380,65 +334,75 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         }
     }
 
-    /// --- CHAINLINK AUTOMATION FUNCTIONS ---
+    /// --- KEEPER INTERFACE ---
     /**
-     * @notice Scans the current cursor window for wallets due for recovery.
+     * @notice Trigger recovery for a wallet whose inactivity period has elapsed.
      *
-     * @dev    ARCHITECTURE: Two-variable design separating scan cost from execution cost.
+     * @dev    PERMISSIONLESS — callable by anyone: the Aeternum keeper bot,
+     *         Gelato Network (Phase 2), CRE (Phase 3), the beneficiary, or any
+     *         external party. No access control is applied at this entry point.
      *
-     *         MAX_CHECK_UPKEEP_SIZE (off-chain, free):
-     *           Runs in Chainlink's simulation environment — no gas cost, no block
-     *           limit. Scans a window of up to MAX_CHECK_UPKEEP_SIZE wallets and
-     *           collects ALL due wallets, capped at MAX_PERFORM_UPKEEP_SIZE for
-     *           the returned candidates.
+     *         SAFETY: The caller supplies only a wallet address. Every subsequent
+     *         decision — whether recovery executes, the amount, and the destination
+     *         — is made exclusively from storage written by the vault owner.
+     *         See `_executeRecovery` for full validation and CEI details.
      *
-     *         MAX_PERFORM_UPKEEP_SIZE (on-chain, gas-bound):
-     *           Only the candidates returned here are passed to performUpkeep.
-     *           Bounded tightly (50 on mainnet) to stay well within block gas limits
-     *           given worst-case ~100k gas per _executeRecovery call.
+     *         SILENT RETURN: This function does not revert when conditions are not
+     *         met (wallet not yet due, already recovered, zero balance, or cancelled).
+     *         This allows competing keepers to submit without reverting on race losses.
+     *         The Aeternum keeper bot pre-validates via `isRecoveryDue(wallet)` as a
+     *         free eth_call before broadcasting any transaction.
      *
-     *         CURSOR BEHAVIOUR:
-     *           • Due wallets found  → cursor HOLDS at current position.
-     *             Next call re-scans the same window until fully cleared.
-     *           • No due wallets, total ≤ MAX_CHECK_UPKEEP_SIZE → cursor is pinned
-     *             to 0; the entire registry fits in one window; no LINK is spent
-     *             on idle advancement.
-     *           • No due wallets, total > MAX_CHECK_UPKEEP_SIZE → cursor ADVANCES
-     *             to the next window once CURSOR_ADVANCE_INTERVAL has elapsed.
-     *           • Window exhausted   → cursor wraps to 0.
+     *         ATTEMPT COUNTER: `failedRecoveryAttempts` increments only when the ETH
+     *         transfer to the backup address actually fails — not on pre-condition
+     *         misses. A keeper losing a race to another keeper does not consume a
+     *         retry slot.
      *
-     *         STALE DATA SAFETY:
-     *           performUpkeep re-validates every candidate before acting.
-     *           Stale entries (e.g. wallet pinged between check and perform)
-     *           are silently skipped. No ETH is sent to an ineligible wallet.
-     *
-     * @return upkeepNeeded True when performUpkeep should be called.
-     * @return performData  ABI-encoded (address[] candidates, uint256 nextCursor).
+     * @param  wallet The wallet address to attempt recovery on.
      */
-    function checkUpkeep(
-        bytes calldata /* checkData */
-    )
+    function triggerRecovery(address wallet) external nonReentrant {
+        _executeRecovery(wallet);
+    }
+
+    /**
+     * @notice Returns triggerable wallet addresses within a registry slice.
+     *
+     * @dev    Designed for the Aeternum keeper bot and Phase 3 CRE integration.
+     *         The keeper calls this as a free eth_call to identify wallets due for
+     *         recovery before submitting any `triggerRecovery` transactions. CRE
+     *         can call this via a single Read Chain capability DON request per batch,
+     *         avoiding per-vault round trips.
+     *
+     *         Returns only wallets where all three conditions are met:
+     *           • `isActive == true`
+     *           • `balance > 0`
+     *           • `block.timestamp >= lastActivity + inactivityPeriod`
+     *
+     *         The returned array is trimmed to the actual triggerable count via
+     *         assembly — no trailing zero addresses are included.
+     *
+     * @param  startIndex Inclusive start index into the registered wallets array.
+     * @param  batchSize  Number of registry entries to scan from startIndex.
+     *                    Clamped to the remaining length if it exceeds bounds.
+     * @return triggerable Wallet addresses currently eligible for recovery.
+     *                     Empty array if none are due in the requested range.
+     */
+    function checkVaultsBatch(uint256 startIndex, uint256 batchSize)
         external
         view
-        override(IAeternumVault, AutomationCompatibleInterface)
-        returns (bool upkeepNeeded, bytes memory performData)
+        returns (address[] memory triggerable)
     {
         uint256 total = s_registeredWallets.length;
-        if (total == 0) return (false, bytes(""));
+        if (startIndex >= total || batchSize == 0) return new address[](0);
 
-        // Wrap cursor if registry has shrunk below it, or if all wallets fit in one scan window
-        uint256 cursor = (s_checkCursor >= total || total <= MAX_CHECK_UPKEEP_SIZE) ? 0 : s_checkCursor;
-
-        // Define scan window: [cursor, end)
-        uint256 end = cursor + MAX_CHECK_UPKEEP_SIZE;
+        uint256 end = startIndex + batchSize;
         if (end > total) end = total;
 
-        // Collect due wallets up to MAX_PERFORM_UPKEEP_SIZE
-        // Allocate at full perform size; trim with assembly after fill
-        address[] memory candidates = new address[](MAX_PERFORM_UPKEEP_SIZE);
+        uint256 rangeSize = end - startIndex;
+        address[] memory results = new address[](rangeSize);
         uint256 count = 0;
 
-        for (uint256 i = cursor; i < end;) {
+        for (uint256 i = startIndex; i < end;) {
             address wallet = s_registeredWallets[i];
             RecoveryConfig storage config = s_configs[wallet];
 
@@ -446,111 +410,19 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
                 config.isActive && config.balance > 0
                     && block.timestamp >= config.lastActivity + config.inactivityPeriod
             ) {
-                candidates[count] = wallet;
+                results[count] = wallet;
                 unchecked {
                     ++count;
                 }
-                // Stop scanning once we have a full perform batch.
-                // Remaining due wallets in window caught on next call (cursor holds).
-                if (count == MAX_PERFORM_UPKEEP_SIZE) break;
             }
-
             unchecked {
                 ++i;
             }
         }
 
-        if (count > 0) {
-            // Recovery needed: HOLD cursor
-            // nextCursor == cursor signals performUpkeep NOT to update the advance
-            // timestamp. The window is re-scanned next call until fully cleared.
-            assembly { mstore(candidates, count) }
-            return (true, abi.encode(candidates, cursor, false));
-        }
-
-        // Window clear: attempt cursor advancement
-        // Calculate where cursor would move to next
-        uint256 nextCursor = (end >= total) ? 0 : end;
-
-        if (total > MAX_CHECK_UPKEEP_SIZE && block.timestamp >= s_lastCursorAdvance + CURSOR_ADVANCE_INTERVAL) {
-            // Registry spans multiple windows — advance cursor to next window
-            address[] memory empty = new address[](0);
-            return (true, abi.encode(empty, nextCursor, true));
-        }
-
-        // Single-window registry or interval not yet elapsed — nothing to do
-        return (false, bytes(""));
-    }
-
-    /**
-     * @notice Executes pending recoveries and manages the rolling cursor.
-     *
-     * @dev    CURSOR LOGIC:
-     *           • Always writes `nextCursor` to `s_checkCursor`.
-     *           • Updates `s_lastCursorAdvance` ONLY when cursor actually moves
-     *             (nextCursor != currentCursor). This correctly gates idle advancement
-     *             without interfering with active recovery passes where cursor holds.
-     *
-     *         STALE DATA SAFETY:
-     *           Every wallet in `walletsToRecover` is re-validated inside
-     *           `_executeRecovery` before any ETH is transferred. If a wallet
-     *           is no longer eligible (user pinged, deposited, or cancelled between
-     *           checkUpkeep and performUpkeep), it is silently skipped. The cursor
-     *           still advances or holds correctly regardless of how many are skipped.
-     *
-     *         BATCH SIZE GUARD:
-     *           Reverts if candidates exceed MAX_PERFORM_UPKEEP_SIZE to defend against
-     *           crafted performData with an oversized array that could exhaust block gas.
-     *
-     * @param performData ABI-encoded (address[] candidates, uint256 nextCursor)
-     *                    as produced by checkUpkeep.
-     */
-    function performUpkeep(bytes calldata performData)
-        external
-        override(IAeternumVault, AutomationCompatibleInterface)
-        nonReentrant
-    {
-        // Once forwarder is set, reject any caller that isn't it.
-        // Before setForwarder() is called (s_forwarder == address(0)),
-        // the check is skipped so you can test manually on Sepolia.
-        if (s_forwarder != address(0) && msg.sender != s_forwarder) {
-            revert AeternumVault__NotForwarder();
-        }
-
-        (address[] memory walletsToRecover, uint256 nextCursor, bool isIdleAdvance) =
-            abi.decode(performData, (address[], uint256, bool));
-
-        uint256 length = walletsToRecover.length;
-        if (length > MAX_PERFORM_UPKEEP_SIZE) revert AeternumVault__MaxPerformUpkeepSizeExceeded();
-
-        s_checkCursor = nextCursor;
-
-        // Update timestamp only when this is an explicit idle advance tick,
-        // not during recovery passes (where cursor holds position).
-        if (isIdleAdvance) {
-            s_lastCursorAdvance = block.timestamp;
-        }
-
-        for (uint256 i = 0; i < length;) {
-            _executeRecovery(walletsToRecover[i]);
-            unchecked {
-                ++i;
-            }
-        }
-    }
-
-    /**
-     * @notice Set the Chainlink Automation forwarder address for this upkeep.
-     * @dev    Can only be called once. After this, only the forwarder may call
-     *         performUpkeep(). Get the forwarder address from the Chainlink
-     *         Automation UI after registering the upkeep.
-     * @param  forwarder The forwarder address assigned to this upkeep.
-     */
-    function setForwarder(address forwarder) external {
-        if (s_forwarder != address(0)) revert AeternumVault__ForwarderAlreadySet();
-        if (forwarder == address(0)) revert AeternumVault__InvalidAddress();
-        s_forwarder = forwarder;
-        emit ForwarderSet(forwarder);
+        // Trim to actual triggerable count — no trailing zero addresses.
+        assembly { mstore(results, count) }
+        return results;
     }
 
     /// --- VIEW FUNCTIONS ---
@@ -570,6 +442,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
      * @notice Returns true if the wallet's recovery conditions are currently met.
      * @dev    A wallet is "due" when it is active, has a non-zero balance, and the
      *         inactivity period has fully elapsed since `lastActivity`.
+     *         The keeper bot calls this as a free eth_call before submitting
+     *         `triggerRecovery` to avoid wasting gas on ineligible wallets.
      * @param  wallet The wallet address to query.
      */
     function isRecoveryDue(address wallet) external view returns (bool) {
@@ -592,7 +466,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     }
 
     /// @notice Returns true if a backup address has been permanently blocked
-    ///         due to rejecting ETH across MAX_RECOVERY_ATTEMPTS recoveries.
+    ///         due to rejecting ETH across MAX_RECOVERY_ATTEMPTS attempts.
     /// @param backup The backup address to query.
     function isBackupAbandoned(address backup) external view returns (bool) {
         return s_abandonedBackupAddresses[backup];
@@ -600,6 +474,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /**
      * @notice Returns a paginated slice of registered wallet addresses.
+     * @dev    Used by the keeper bot for full registry iteration and by external
+     *         tooling. Pair with `getTotalRegistered()` to paginate correctly.
      * @param start Inclusive start index.
      * @param end   Exclusive end index. Clamped to array length if out of bounds.
      */
@@ -623,62 +499,51 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         return s_registeredWallets.length;
     }
 
-    /// @notice Returns the current registry scan cursor position.
-    function getCheckCursor() external view returns (uint256) {
-        return s_checkCursor;
-    }
-
-    /// @notice Returns the timestamp of the last idle cursor advancement.
-    function getLastCursorAdvance() external view returns (uint256) {
-        return s_lastCursorAdvance;
-    }
-
-    /// @notice Returns the Chainlink Automation forwarder address.
-    function getForwarder() external view returns (address) {
-        return s_forwarder;
-    }
-
     /// --- INTERNAL FUNCTIONS ---
     /**
-     * @notice Executes recovery for a single wallet, transferring its balance to the backup address.
-     * @dev Attempts to execute recovery for a single wallet.
-     *      Re-validates all conditions so stale or duplicate entries are safely skipped.
+     * @notice Executes recovery for a single wallet, transferring its balance to
+     *         the backup address.
      *
-     *      CEI pattern:
-     *        1. Checks  — re-validate eligibility.
-     *        2. Effects — zero the balance, mark inactive, remove from registry.
-     *        3. Interact — transfer ETH to backupAddress.
+     * @dev    Re-validates all conditions so stale or duplicate calls are safely
+     *         skipped. Called exclusively by `triggerRecovery`.
      *
-     *      Failure handling & retry logic:
-     *        * If the ETH transfer to `backupAddress` fails (e.g. reverting contract),
-     *          state is safely restored and a {RecoveryFailed} event is emitted.
-     *        * The wallet is re-added to the monitoring queue for retry in the next upkeep cycle.
-     *        * Recovery is retried up to `MAX_RECOVERY_ATTEMPTS` (currently 3).
-     *        * Once the max attempts threshold is reached, the wallet is marked as abandoned,
-     *          permanently removed from the monitoring queue, and {RecoveryAbandoned} is emitted.
-     *        * Wallet balance remains accessible via withdrawAll() or send(),
-     *          but re-registration with same backupAddress is permanently blocked.
+     *         CEI PATTERN:
+     *           1. Checks  — re-validate eligibility. Silent return if unmet.
+     *           2. Effects — zero the balance, mark inactive, remove from registry,
+     *                        increment attempt counter.
+     *           3. Interact — transfer ETH to backupAddress.
      *
-     *      This design ensures that:
-     *        * A single faulty backup address cannot block batch execution.
-     *        * Recovery attempts are bounded, preventing infinite retry loops.
+     *         FAILURE HANDLING AND RETRY LOGIC:
+     *           • If the ETH transfer to `backupAddress` fails (e.g. a contract
+     *             backup address with no receive function), state is safely restored
+     *             and {RecoveryFailed} is emitted.
+     *           • The wallet is re-added to the registry for retry on the next
+     *             keeper cycle. The attempt counter is NOT reset between retries.
+     *           • Recovery is retried up to MAX_RECOVERY_ATTEMPTS times.
+     *           • Once exhausted, the wallet is permanently marked as abandoned,
+     *             removed from monitoring, and {RecoveryAbandoned} is emitted.
+     *           • The wallet's balance remains accessible via withdrawAll() or send(),
+     *             but re-registration with the same backup address is blocked forever.
      *
-     *      Slither reentrancy-eth: acknowledged.
-     *        * On a failed transfer, config.balance, config.isActive, config.isAbandoned,
-     *          and s_registeredWallets are written after the external call — unavoidable
-     *          in the failure-restore pattern.
-     *        * Safety is guaranteed by three independent layers:
-     *            1. `nonReentrant` on `performUpkeep` blocks all reentrant calls.
-     *            2. `config.balance` is zeroed before the call — no double-spend possible.
-     *            3. After MAX_RECOVERY_ATTEMPTS (3) consecutive failures the vault is
-     *               permanently abandoned, eliminating the retry loop entirely.
+     *         Slither reentrancy-eth: acknowledged.
+     *           On a failed transfer, config.balance, config.isActive, config.isAbandoned,
+     *           and s_registeredWallets are written after the external call — unavoidable
+     *           in the failure-restore pattern.
+     *           Safety is guaranteed by three independent layers:
+     *             1. `nonReentrant` on `triggerRecovery` blocks all reentrant calls.
+     *             2. `config.balance` is zeroed before the call — no double-spend possible.
+     *             3. After MAX_RECOVERY_ATTEMPTS consecutive failures the vault is
+     *                permanently abandoned, eliminating the retry loop entirely.
      *
      * @param wallet The wallet address to attempt recovery on.
      */
     function _executeRecovery(address wallet) internal {
         RecoveryConfig storage config = s_configs[wallet];
 
-        // Re-validate (Checks)
+        // Re-validate (Checks) — silent return on any unmet condition.
+        // These guards also make the race condition between competing keepers safe:
+        // the second caller finds isActive == false and balance == 0 after a
+        // successful execution, and silently returns without reverting.
         if (!config.isActive) return;
         if (config.balance == 0) return;
         if (block.timestamp < config.lastActivity + config.inactivityPeriod) return;
@@ -686,13 +551,13 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         address backupAddress = config.backupAddress;
         uint256 amount = config.balance;
 
-        // Pre-calculate new attempt count before external call (CEI)
+        // Pre-calculate new attempt count before external call (CEI).
         uint8 newAttempts;
         unchecked {
             newAttempts = config.failedRecoveryAttempts + 1;
         }
 
-        // Effects — ALL moved before external call
+        // Effects — ALL committed before external call.
         config.balance = 0;
         config.isActive = false;
         config.failedRecoveryAttempts = newAttempts;
@@ -703,8 +568,9 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         (bool success,) = backupAddress.call{value: amount}("");
 
         if (!success) {
-            // Restore balance — safe: nonReentrant on performUpkeep prevents exploitation.
-            // config.balance was zeroed before the call so no double-spend is possible.
+            // Restore balance — safe: nonReentrant on triggerRecovery prevents
+            // exploitation. config.balance was zeroed before the call so no
+            // double-spend is possible regardless.
             config.balance = amount;
 
             if (newAttempts >= MAX_RECOVERY_ATTEMPTS) {
@@ -714,7 +580,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
                 return;
             }
 
-            // Restore monitoring state for retry next cycle
+            // Restore monitoring state for retry on the next keeper cycle.
             config.isActive = true;
             s_registeredWallets.push(wallet);
             s_walletIndexPlusOne[wallet] = s_registeredWallets.length;
@@ -726,18 +592,17 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
     }
 
     /**
-     * @notice Removes a wallet from the registered wallets array in O(1) using swap-and-pop.
-     * @dev Removes `wallet` from `s_registeredWallets`.
+     * @notice Removes a wallet from the registered wallets array in O(1) via swap-and-pop.
      *
-     *      Algorithm:
-     *        1. Look up the wallet's 1-indexed position.
-     *        2. Move the last element in the array into that position.
-     *        3. Update the moved element's index mapping.
-     *        4. Pop the (now-duplicate) last element and delete the mapping entry.
+     * @dev    Algorithm:
+     *           1. Look up the wallet's 1-indexed position.
+     *           2. Move the last element into that position.
+     *           3. Update the moved element's index mapping.
+     *           4. Pop the (now-duplicate) last element and delete the mapping entry.
      *
-     *      This preserves array integrity when multiple wallets are removed in the
-     *      same `performUpkeep` call, because `s_walletIndexPlusOne` is always
-     *      updated to reflect the current (possibly new) position.
+     *         This preserves array integrity when multiple wallets are removed within
+     *         a single call, because s_walletIndexPlusOne is always updated to
+     *         reflect the current position of any moved element.
      *
      * @param wallet Address to remove from the registry.
      */
@@ -749,7 +614,6 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
         uint256 lastIndex = s_registeredWallets.length - 1;
 
         if (indexToRemove != lastIndex) {
-            // Move the last element into the gap
             address lastWallet = s_registeredWallets[lastIndex];
             s_registeredWallets[indexToRemove] = lastWallet;
             s_walletIndexPlusOne[lastWallet] = indexPlusOne; // update moved element's index
@@ -761,8 +625,8 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard, AutomationCompatibleI
 
     /// --- FALLBACK / RECEIVE ---
     /**
-     * @notice Rejects plain ETH transfers to prevent accidental fund loss
-     * @dev Users must interact through `register()` or `deposit()`.
+     * @notice Rejects plain ETH transfers to prevent accidental fund loss.
+     * @dev    Users must interact through `register()` or `deposit()`.
      */
     receive() external payable {
         revert AeternumVault__DirectTransferNotAllowed();
