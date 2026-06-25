@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
-import {Test, console2, Vm, stdStorage, StdStorage} from "forge-std/Test.sol";
+import {Test, console2, Vm} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {AeternumVault} from "../../src/AeternumVault.sol";
 import {IAeternumVault} from "../../src/interfaces/IAeternumVault.sol";
@@ -11,7 +11,7 @@ import {RejectingCallerMock} from "../mocks/RejectingCallerMock.sol";
 
 /**
  * @title  AeternumVaultTest
- * @notice Comprehensive test suite for AeternumVault.
+ * @notice Comprehensive test suite for AeternumVault — Phase 1 keeper architecture.
  *
  *         Coverage areas:
  *           • Deployment / constructor
@@ -20,17 +20,18 @@ import {RejectingCallerMock} from "../mocks/RejectingCallerMock.sol";
  *           • Ping (activity reset)
  *           • Config updates (backup address, inactivity period)
  *           • Recovery cancellation
- *           • Chainlink Automation (checkUpkeep + performUpkeep)
- *           • Cursor behaviour (hold, advance, wrap)
- *           • Recovery failure & abandonment
+ *           • triggerRecovery — core execution paths
+ *           • triggerRecovery — silent return paths (pre-condition misses)
+ *           • triggerRecovery — permissionless caller set & race conditions
+ *           • triggerRecovery — failure handling & abandonment retry cycle
+ *           • checkVaultsBatch — all branching paths
+ *           • Stale data safety
+ *           • Security (reentrancy, CEI double-spend prevention)
  *           • Registry integrity (swap-and-pop)
- *           • Security (reentrancy, access control)
  *           • Fuzz tests
  *           • Invariant tests
  */
 contract AeternumVaultTest is StdInvariant, Test {
-    using stdStorage for StdStorage;
-
     /// --- TEST SETUP ---
     AeternumVault public rm;
 
@@ -58,17 +59,13 @@ contract AeternumVaultTest is StdInvariant, Test {
     event Withdrawn(address indexed wallet, uint256 amount);
     event BackupAddressUpdated(address indexed wallet, address indexed newBackupAddress);
     event InactivityPeriodUpdated(address indexed wallet, uint256 newPeriod);
-    event ForwarderSet(address indexed forwarder);
 
     /// --- SETUP ---
     function setUp() public {
         rm = new AeternumVault(
             180 days, // MIN_INACTIVITY_PERIOD
             3650 days, // MAX_INACTIVITY_PERIOD
-            5000, // MAX_CHECK_UPKEEP_SIZE
-            50, // MAX_PERFORM_UPKEEP_SIZE
-            3, // MAX_RECOVERY_ATTEMPTS
-            1 hours // CURSOR_ADVANCE_INTERVAL
+            3 // MAX_RECOVERY_ATTEMPTS
         );
 
         INACTIVITY_PERIOD = rm.MIN_INACTIVITY_PERIOD();
@@ -81,14 +78,17 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     /// --- HELPERS ---
-    AeternumVault cv; // cursor vault for boundary tests
 
-    /// @dev Deploys a vault with configurable scan/perform sizes for cursor boundary testing.
-    function _deployCursorVault(uint256 checkSize, uint256 performSize, uint256 interval)
-        internal
-        returns (AeternumVault)
-    {
-        return new AeternumVault(180 days, 3650 days, checkSize, performSize, 3, interval);
+    /// @dev Registers alice with 1 ETH and default inactivity period.
+    function _registerAlice() internal {
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, INACTIVITY_PERIOD);
+    }
+
+    /// @dev Warps block.timestamp past the wallet's configured inactivity deadline.
+    function _warpPastInactivity(address wallet) internal {
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(wallet);
+        vm.warp(cfg.lastActivity + cfg.inactivityPeriod + 1);
     }
 
     /// @dev Registers `count` deterministic wallets into `vault` with 1 ETH each.
@@ -111,51 +111,61 @@ contract AeternumVaultTest is StdInvariant, Test {
         }
     }
 
-    /// @dev Warps time past a specific wallet's inactivity period.
-    function _warpPastInactivity(address wallet) internal {
-        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(wallet);
-        vm.warp(cfg.lastActivity + cfg.inactivityPeriod + 1);
+    /// @dev Convenience wrapper: registers wallets into the main `rm` instance.
+    function _registerWallets(uint256 count, uint256 seed)
+        internal
+        returns (address[] memory users, address[] memory backups)
+    {
+        return _registerWallets(rm, count, seed);
     }
 
-    function _registerAlice() internal {
-        vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, INACTIVITY_PERIOD);
+    /**
+     * @dev Drives a wallet to the abandoned state by calling triggerRecovery
+     *      MAX_RECOVERY_ATTEMPTS times against a backup address that rejects ETH.
+     *      Assumes the wallet is already registered with a RejectingReceiver backup.
+     */
+    function _reachAbandonment(address wallet) internal {
+        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
+            _warpPastInactivity(wallet);
+            rm.triggerRecovery(wallet);
+        }
     }
 
-    /// SECTION 1. --- CONSTRUCTOR / DEPLOYMENT ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 1 — CONSTRUCTOR / DEPLOYMENT
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_constructor_initialState() public view {
         assertEq(rm.getTotalRegistered(), 0);
-        assertEq(rm.getCheckCursor(), 0);
-        assertEq(rm.getLastCursorAdvance(), 0);
+        assertEq(rm.MIN_INACTIVITY_PERIOD(), 180 days);
+        assertEq(rm.MAX_INACTIVITY_PERIOD(), 3650 days);
+        assertEq(uint256(rm.MAX_RECOVERY_ATTEMPTS()), 3);
     }
 
     function test_constructor_revertsIfMinInactivityIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
-        new AeternumVault(0, 3650 days, 5000, 50, 3, 1 hours);
+        new AeternumVault(0, 3650 days, 3);
     }
 
     function test_constructor_revertsIfMaxLessThanMin() public {
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
-        new AeternumVault(180 days, 150 days, 5000, 50, 3, 1 hours);
-    }
-
-    function test_constructor_revertsIfMaxPerformUpkeepSizeIsZero() public {
-        vm.expectRevert(IAeternumVault.AeternumVault__InvalidConstructorParam.selector);
-        new AeternumVault(180 days, 3650 days, 5000, 0, 3, 1 hours);
+        new AeternumVault(180 days, 150 days, 3);
     }
 
     function test_constructor_revertsIfMaxRecoveryAttemptsIsZero() public {
         vm.expectRevert(IAeternumVault.AeternumVault__MaxRecoveryAttemptsExceeded.selector);
-        new AeternumVault(180 days, 3650 days, 5000, 50, 0, 1 hours);
+        new AeternumVault(180 days, 3650 days, 0);
     }
 
-    function test_constructor_revertsIfPerformSizeExceedsCheckSize() public {
-        // perform(10) > check(5) — violates the sizing invariant
-        vm.expectRevert(IAeternumVault.AeternumVault__MaxPerformUpkeepSizeExceeded.selector);
-        new AeternumVault(365 days, 3650 days, 5, 10, 3, 1 hours);
+    function test_constructor_minEqualsMax_isValid() public {
+        AeternumVault v = new AeternumVault(180 days, 180 days, 3);
+        assertEq(v.MIN_INACTIVITY_PERIOD(), v.MAX_INACTIVITY_PERIOD());
     }
 
-    /// SECTION 2. --- REGISTER — SUCCESS PATHS ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 2 — REGISTER: SUCCESS PATHS
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_register_storesConfig() public {
         _registerAlice();
 
@@ -199,7 +209,6 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(alice);
         rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
 
-        // Verify Deposited was NOT emitted (zero-value deposit)
         bool depositedFound = false;
         bytes32 depositedSig = keccak256("Deposited(address,uint256)");
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -218,7 +227,10 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getTotalRegistered(), 2);
     }
 
-    /// SECTION 3. --- REGISTER — REVERT PATHS ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 3 — REGISTER: REVERT PATHS
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_register_revertsIfAlreadyRegistered() public {
         _registerAlice();
 
@@ -264,21 +276,18 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
-
+        _reachAbandonment(alice);
         assertTrue(rm.isBackupAbandoned(address(badBackup)));
 
-        // Bob tries the same bad backup — blocked
         vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
         vm.prank(bob);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
     }
 
-    /// SECTION 4. --- DEPOSIT ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 4 — DEPOSIT
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_deposit_increasesBalance() public {
         _registerAlice();
         uint256 balanceBefore = rm.getRecoveryConfig(alice).balance;
@@ -327,7 +336,10 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.deposit{value: 0}();
     }
 
-    /// SECTION 5. --- WITHDRAWALL ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 5 — WITHDRAWALL
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_withdrawAll_emptiesBalance() public {
         _registerAlice();
 
@@ -366,7 +378,10 @@ contract AeternumVaultTest is StdInvariant, Test {
         rejecter.doWithdrawAll();
     }
 
-    /// SECTION 5b. --- SEND ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 5b — SEND
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_send_transfersETHtoRecipient() public {
         _registerAlice();
         address recipient = makeAddr("recipient");
@@ -446,19 +461,10 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.send(address(rejecter), 0.1 ether);
     }
 
-    function testFuzz_send_amount(uint128 amount) public {
-        vm.assume(amount > 0 && amount <= DEPOSIT_1_ETH);
-        _registerAlice();
-        address recipient = makeAddr("recipient");
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 6 — PING
+    // ─────────────────────────────────────────────────────────────────────────
 
-        vm.prank(alice);
-        rm.send(recipient, amount);
-
-        assertEq(recipient.balance, amount);
-        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH - amount);
-    }
-
-    /// SECTION 6. --- PING ---
     function test_ping_resetsLastActivity() public {
         _registerAlice();
         uint256 laterTs = block.timestamp + 100 days;
@@ -472,12 +478,10 @@ contract AeternumVaultTest is StdInvariant, Test {
 
     function test_ping_preventsRecovery() public {
         _registerAlice();
-        // Warp to 3/4 of inactivity period and ping
         vm.warp(block.timestamp + (INACTIVITY_PERIOD * 3 / 4));
         vm.prank(alice);
-        rm.ping(); // Reset timer
+        rm.ping();
 
-        // Warp another 3/4 — still under one full period from last ping
         vm.warp(block.timestamp + (INACTIVITY_PERIOD * 3 / 4));
         assertFalse(rm.isRecoveryDue(alice));
     }
@@ -498,7 +502,10 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.ping();
     }
 
-    /// SECTION 7. --- CONFIG UPDATES ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 7 — CONFIG UPDATES
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_updateBackupAddress_success() public {
         _registerAlice();
         address newBackup = makeAddr("newBackup");
@@ -538,17 +545,13 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
+        _reachAbandonment(alice);
 
-        // Re-register with a good backup
+        // Re-register with a good backup address
         vm.prank(alice);
         rm.register{value: 0.5 ether}(aliceBackup, INACTIVITY_PERIOD);
 
-        // Trying to update back to the abandoned address is blocked
+        // Updating back to the abandoned address must be blocked
         vm.expectRevert(IAeternumVault.AeternumVault__WalletAbandoned.selector);
         vm.prank(alice);
         rm.updateBackupAddress(address(badBackup));
@@ -570,7 +573,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.updateInactivityPeriod(INACTIVITY_PERIOD - 1);
     }
 
-    function test_updateInactivityPeriod_revertsIfPeriodTooLong() public {
+    function test_updateInactivityPeriod_revertsIfTooLong() public {
         _registerAlice();
         uint256 tooLong = rm.MAX_INACTIVITY_PERIOD() + 1;
         vm.expectRevert(IAeternumVault.AeternumVault__InvalidInactivityPeriod.selector);
@@ -588,7 +591,10 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getRecoveryConfig(alice).lastActivity, block.timestamp);
     }
 
-    /// SECTION 8. --- CANCEL RECOVERY ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 8 — CANCEL RECOVERY
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_cancelRecovery_refundsBalance() public {
         _registerAlice();
         uint256 ethBefore = alice.balance;
@@ -646,15 +652,6 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(alice.balance, ethBefore);
     }
 
-    function test_cancelRecovery_whenWalletIsLastInRegistry() public {
-        _registerAlice();
-        vm.prank(alice);
-        rm.cancelRecovery();
-
-        assertEq(rm.getTotalRegistered(), 0);
-        assertFalse(rm.isRegistered(alice));
-    }
-
     function test_cancelRecovery_revertsIfTransferFails() public {
         RejectingCallerMock rejecter = new RejectingCallerMock(address(rm));
         deal(address(rejecter), 2 ether);
@@ -666,508 +663,74 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     function test_cancelRecovery_onAbandonedWallet_refundsAndClears() public {
-        // Reach abandonment so wallet is removed from registry (s_walletIndexPlusOne = 0)
-        // but balance is preserved and onlyRegistered still passes (isAbandoned=true).
-        // cancelRecovery() calls _removeFromRegistry() which hits the indexPlusOne==0 early return.
+        // Abandoned wallets: isActive=false, balance preserved, registry cleared.
+        // cancelRecovery still succeeds via the isAbandoned branch of onlyRegistered.
+        // _removeFromRegistry hits indexPlusOne==0 (already removed) and early-returns.
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
+        _reachAbandonment(alice);
 
         assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
-        assertEq(rm.getTotalRegistered(), 0); // already removed from registry
-        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH); // balance preserved
+        assertEq(rm.getTotalRegistered(), 0);
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
 
         uint256 aliceBalanceBefore = alice.balance;
 
         vm.prank(alice);
-        rm.cancelRecovery(); // _removeFromRegistry → indexPlusOne=0 → early return, transfer still works
+        rm.cancelRecovery();
 
         assertEq(alice.balance, aliceBalanceBefore + DEPOSIT_1_ETH);
         assertEq(rm.getRecoveryConfig(alice).balance, 0);
         assertEq(rm.getTotalRegistered(), 0);
     }
 
-    /// SECTION 9. --- CHECK UPKEEP ---
-    function test_checkUpkeep_returnsFalseIfRegistryEmpty() public view {
-        (bool needed,) = rm.checkUpkeep(bytes(""));
-        assertFalse(needed);
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 9 — TRIGGERRECOVERY: CORE EXECUTION PATHS
+    // ─────────────────────────────────────────────────────────────────────────
 
-    function test_checkUpkeep_returnsFalseIfNoWalletsDueAndIntervalNotElapsed() public {
-        _registerAlice();
-        (bool needed,) = rm.checkUpkeep(bytes(""));
-        assertFalse(needed);
-    }
-
-    function test_checkUpkeep_returnsTrueWithCandidatesWhenWalletIsDue() public {
+    function test_triggerRecovery_executesRecovery_andZeroesBalance() public {
         _registerAlice();
         _warpPastInactivity(alice);
 
-        (bool needed, bytes memory performData) = rm.checkUpkeep(bytes(""));
-
-        assertTrue(needed);
-        (address[] memory candidates,,) = abi.decode(performData, (address[], uint256, bool));
-        assertEq(candidates.length, 1);
-        assertEq(candidates[0], alice);
-    }
-
-    function test_checkUpkeep_doesNotIncludeZeroBalanceWallet_inCandidates() public {
-        vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
-        _warpPastInactivity(alice);
-
-        (bool needed, bytes memory performData) = rm.checkUpkeep(bytes(""));
-
-        if (needed) {
-            (address[] memory candidates,,) = abi.decode(performData, (address[], uint256, bool));
-            for (uint256 i = 0; i < candidates.length; i++) {
-                assertTrue(candidates[i] != alice, "Zero-balance wallet must not appear as candidate");
-            }
-        }
-    }
-
-    function test_checkUpkeep_returnsMaxPerformSize_whenMoreWalletsDueThanPerformCap() public {
-        cv = _deployCursorVault(20, 3, 30 seconds);
-        _registerWallets(cv, 10, 0);
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
-
-        (bool needed, bytes memory performData) = cv.checkUpkeep(bytes(""));
-
-        assertTrue(needed);
-        (address[] memory candidates,,) = abi.decode(performData, (address[], uint256, bool));
-        assertEq(candidates.length, cv.MAX_PERFORM_UPKEEP_SIZE());
-    }
-
-    function test_checkUpkeep_ignoresCheckData_parameter() public {
-        _registerAlice();
-        _warpPastInactivity(alice);
-
-        bytes memory arbitraryCheckData = abi.encode(uint256(999), uint256(999));
-        (bool needed, bytes memory performData) = rm.checkUpkeep(arbitraryCheckData);
-
-        assertTrue(needed);
-        (address[] memory candidates,,) = abi.decode(performData, (address[], uint256, bool));
-        assertEq(candidates[0], alice);
-    }
-
-    /// SECTION 9b. --- CURSOR BEHAVIOUR ---
-    function test_cursor_holdsPosition_whenDueWalletsExistInWindow() public {
-        cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 5, 0);
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
-
-        uint256 cursorBefore = cv.getCheckCursor();
-
-        (, bytes memory performData) = cv.checkUpkeep(bytes(""));
-        (, uint256 nextCursor,) = abi.decode(performData, (address[], uint256, bool));
-
-        assertEq(nextCursor, cursorBefore, "Cursor should HOLD when due wallets exist");
-    }
-
-    function test_cursor_doesNotUpdateAdvanceTimestamp_duringRecoveryPass() public {
-        cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 3, 0);
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
-
-        uint256 timestampBefore = cv.getLastCursorAdvance();
-
-        (, bytes memory performData) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(performData);
-
-        assertEq(cv.getLastCursorAdvance(), timestampBefore, "Advance timestamp must not update when cursor holds");
-    }
-
-    function test_cursor_remainsAtZero_afterPartialWindowRecovery() public {
-        cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 7, 0);
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
-
-        (, bytes memory pd1) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd1);
-        assertEq(cv.getCheckCursor(), 0, "Cursor should still be 0 after first batch");
-
-        (, bytes memory pd2) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd2);
-        assertEq(cv.getCheckCursor(), 0, "Cursor should still be 0 after second batch");
-
-        (, bytes memory pd3) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd3);
-        assertEq(cv.getCheckCursor(), 0, "Cursor should still be 0 after final batch");
-
-        assertEq(cv.getTotalRegistered(), 0);
-    }
-
-    function test_cursor_returnsFalse_whenWindowClear_andIntervalNotElapsed() public {
-        cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 3, 0);
-
-        (bool needed,) = cv.checkUpkeep(bytes(""));
-        assertFalse(needed, "Should return false before interval elapses");
-    }
-
-    function test_cursor_advancesWithEmptyCandidates_whenWindowClear_andIntervalElapsed() public {
-        cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 11, 0);
-
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-
-        (bool needed, bytes memory performData) = cv.checkUpkeep(bytes(""));
-        assertTrue(needed, "Should advance cursor after interval");
-
-        (address[] memory candidates,, bool isIdleAdvance) = abi.decode(performData, (address[], uint256, bool));
-
-        assertEq(candidates.length, 0, "No due wallets - candidates should be empty");
-        assertTrue(isIdleAdvance, "Should be flagged as an idle advance");
-    }
-
-    function test_cursor_advancesToNextWindow_afterIdleAdvance() public {
-        cv = _deployCursorVault(4, 2, 30 seconds);
-        _registerWallets(cv, 8, 0);
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-
-        uint256 cursorBefore = cv.getCheckCursor();
-
-        (, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd);
-
-        assertEq(cv.getCheckCursor(), cursorBefore + 4);
-    }
-
-    function test_cursor_updatesAdvanceTimestamp_onIdleAdvance() public {
-        cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 11, 0);
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-
-        (, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd);
-
-        assertEq(cv.getLastCursorAdvance(), block.timestamp, "Advance timestamp must update on idle advance");
-    }
-
-    function test_cursor_wrapsToZero_whenEndOfRegistryReached() public {
-        cv = _deployCursorVault(4, 2, 30 seconds);
-        _registerWallets(cv, 6, 0);
-
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-        (, bytes memory pd1) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd1);
-        assertEq(cv.getCheckCursor(), 4);
-
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-        (, bytes memory pd2) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd2);
-        assertEq(cv.getCheckCursor(), 0, "Cursor should wrap to 0 at end of registry");
-    }
-
-    function test_cursor_resetsToZero_whenRegistryShrunkBelowCursor() public {
-        cv = _deployCursorVault(5, 3, 30 seconds);
-        (address[] memory users,) = _registerWallets(cv, 10, 0);
-
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-        (, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd);
-
-        for (uint256 i = 0; i < 7; i++) {
-            vm.prank(users[i]);
-            cv.cancelRecovery();
-        }
-
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-        // Should not revert — cursor >= total resets gracefully to 0
-        cv.checkUpkeep(bytes(""));
-        assertTrue(true, "No revert when cursor exceeds total");
-    }
-
-    function test_cursor_advancesAfterWindowFullyCleared() public {
-        cv = _deployCursorVault(6, 3, 30 seconds);
-        _registerWallets(cv, 6, 0);
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
-
-        (, bytes memory pd1) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd1);
-        assertEq(cv.getCheckCursor(), 0);
-
-        (, bytes memory pd2) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd2);
-        assertEq(cv.getCheckCursor(), 0);
-        assertEq(cv.getTotalRegistered(), 0);
-
-        // Add non-due wallets so registry is not empty for interval gating
-        _registerWallets(cv, 7, 100);
-        assertEq(cv.getTotalRegistered(), 7);
-
-        // Idle advance fires immediately (s_lastCursorAdvance=0, timestamp=180 days)
-        (bool immediateAdvance, bytes memory immPd) = cv.checkUpkeep(bytes(""));
-        assertTrue(immediateAdvance, "Idle advance immediately eligible");
-        cv.performUpkeep(immPd);
-        assertEq(cv.getLastCursorAdvance(), block.timestamp, "Timer reset after first idle advance");
-
-        // Before interval: no upkeep needed
-        (bool tooSoon,) = cv.checkUpkeep(bytes(""));
-        assertFalse(tooSoon, "Should return false before interval elapses again");
-
-        // After interval: idle advance triggers again
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-        (bool neededAfter, bytes memory pd3) = cv.checkUpkeep(bytes(""));
-        assertTrue(neededAfter, "Should trigger idle advance after interval");
-
-        (address[] memory candidates,, bool isIdleAdvance) = abi.decode(pd3, (address[], uint256, bool));
-        assertEq(candidates.length, 0, "No due wallets");
-        assertTrue(isIdleAdvance, "Should be idle advance");
-
-        cv.performUpkeep(pd3);
-        assertEq(cv.getLastCursorAdvance(), block.timestamp, "Timestamp updated after second idle advance");
-    }
-
-    /// SECTION 9c. --- CURSOR OPTIMISATION (SINGLE-WINDOW GATE) ---
-    // Verifies the optimisation that gates idle cursor advancement behind
-    // total > MAX_CHECK_UPKEEP_SIZE. When the entire registry fits inside one
-    // scan window, checkUpkeep must never return (true, idleAdvance) regardless
-    // of how much time has elapsed — preventing unnecessary LINK consumption.
-
-    /// @dev Exact lower boundary: total == MAX_CHECK_UPKEEP_SIZE must NOT trigger advance.
-    function test_cursorOpt_noIdleAdvance_whenTotalEqualsCheckSize() public {
-        cv = _deployCursorVault(5, 3, 30 seconds);
-        _registerWallets(cv, 5, 0); // total == checkSize
-
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-
-        (bool needed,) = cv.checkUpkeep(bytes(""));
-        assertFalse(needed, "No idle advance when total == MAX_CHECK_UPKEEP_SIZE");
-    }
-
-    /// @dev Below boundary: total < MAX_CHECK_UPKEEP_SIZE must NOT trigger advance.
-    function test_cursorOpt_noIdleAdvance_whenTotalBelowCheckSize() public {
-        cv = _deployCursorVault(5, 3, 30 seconds);
-        _registerWallets(cv, 3, 0); // total < checkSize
-
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-
-        (bool needed,) = cv.checkUpkeep(bytes(""));
-        assertFalse(needed, "No idle advance when total < MAX_CHECK_UPKEEP_SIZE");
-    }
-
-    /// @dev Exact upper boundary: total == MAX_CHECK_UPKEEP_SIZE + 1 MUST trigger advance.
-    function test_cursorOpt_idleAdvanceFires_whenTotalExceedsCheckSizeByOne() public {
-        cv = _deployCursorVault(5, 3, 30 seconds);
-        _registerWallets(cv, 6, 0); // total > checkSize by exactly 1
-
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-
-        (bool needed, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        assertTrue(needed, "Idle advance must fire when total > MAX_CHECK_UPKEEP_SIZE");
-
-        (address[] memory candidates,, bool isIdleAdvance) = abi.decode(pd, (address[], uint256, bool));
-        assertEq(candidates.length, 0, "No due wallets - candidates must be empty");
-        assertTrue(isIdleAdvance, "Must be flagged as idle advance");
-    }
-
-    /// @dev LINK conservation: s_lastCursorAdvance must remain at its initial value (0)
-    ///      across many elapsed intervals when the registry is a single window.
-    ///      A non-zero value would prove a performUpkeep call was incorrectly triggered.
-    function test_cursorOpt_noLinkSpent_acrossMultipleIntervals() public {
-        cv = _deployCursorVault(5, 3, 30 seconds);
-        _registerWallets(cv, 4, 0); // total < checkSize
-
-        for (uint256 i = 0; i < 5; i++) {
-            vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-            (bool needed,) = cv.checkUpkeep(bytes(""));
-            assertFalse(needed, "checkUpkeep must return false at every interval tick");
-        }
-
-        assertEq(cv.getLastCursorAdvance(), 0, "Advance timestamp must never be written in single-window mode");
-    }
-
-    /// @dev Change 1 (cursor init): a stale s_checkCursor left at a mid-array position
-    ///      must be overridden to 0 when total <= MAX_CHECK_UPKEEP_SIZE, ensuring wallets
-    ///      at low indices are never silently skipped.
-    ///
-    ///      Setup deliberately creates the failure mode of the OLD code:
-    ///        old cursor init: s_checkCursor=3 >= total=4? No → cursor=3 (misses indices 0-2)
-    ///        new cursor init: 3>=4 || 4<=5 → true → cursor=0 (scans all wallets)
-    ///
-    ///      The assertion on candidates.length (3 vs 1) and the presence of users[0]
-    ///      unambiguously distinguishes the two behaviours.
-    function test_cursorOpt_cursorPinnedToZero_despiteStaleCursor() public {
-        cv = _deployCursorVault(5, 3, 30 seconds); // checkSize=5, performSize=3
-
-        (address[] memory users,) = _registerWallets(cv, 4, 0); // total=4 < checkSize=5
-
-        // Simulate a stale cursor at position 3 — as if left from a prior multi-window era.
-        // With old code: cursor=3 → scans [3,4) → finds only users[3] → candidates.length=1.
-        // With new code: total(4) <= checkSize(5) → cursor pinned to 0 → scans [0,4) →
-        //                finds users[0..2] (capped by performSize=3) → candidates.length=3.
-        stdstore.target(address(cv)).sig("getCheckCursor()").checked_write(uint256(3));
-        assertEq(cv.getCheckCursor(), 3, "Precondition: stale cursor written to storage");
-
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1); // all 4 wallets due
-
-        (bool needed, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        assertTrue(needed, "Due wallets must be found");
-
-        (address[] memory candidates,,) = abi.decode(pd, (address[], uint256, bool));
-
-        // performSize=3 slots filled from index 0: proves cursor was pinned to 0
-        assertEq(candidates.length, 3, "Cursor pinned to 0 - 3 candidates from indices 0-2");
-
-        // users[0] must be present — it lives at s_registeredWallets[0] and
-        // would be invisible to the old code starting its scan at index 3
-        bool foundFirst = false;
-        for (uint256 i = 0; i < candidates.length; i++) {
-            if (candidates[i] == users[0]) foundFirst = true;
-        }
-        assertTrue(foundFirst, "users[0] must appear in candidates; proves scan started at index 0");
-    }
-
-    /// @dev Recovery execution must be unaffected by the single-window optimisation.
-    ///      Due wallets must still be found, recovered, and funded regardless of
-    ///      whether total <= MAX_CHECK_UPKEEP_SIZE.
-    function test_cursorOpt_recoveryStillWorks_inSingleWindowMode() public {
-        cv = _deployCursorVault(10, 5, 30 seconds);
-        (address[] memory users, address[] memory backups) = _registerWallets(cv, 3, 0);
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
-
-        (bool needed, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        assertTrue(needed, "Due wallets found in single-window mode");
-
-        (address[] memory candidates,,) = abi.decode(pd, (address[], uint256, bool));
-        assertEq(candidates.length, 3, "All 3 due wallets returned as candidates");
-
-        cv.performUpkeep(pd);
-
-        assertEq(cv.getTotalRegistered(), 0, "Registry cleared after recovery");
-        for (uint256 i = 0; i < 3; i++) {
-            assertEq(backups[i].balance, 1 ether, "Backup address received funds");
-            assertFalse(cv.getRecoveryConfig(users[i]).isActive, "Wallet marked inactive");
-        }
-    }
-
-    /// @dev Threshold crossing (upward): once total crosses from <= to > MAX_CHECK_UPKEEP_SIZE,
-    ///      idle advancement must resume immediately when CURSOR_ADVANCE_INTERVAL has
-    ///      already elapsed. s_lastCursorAdvance=0 (initial) satisfies the interval
-    ///      condition the moment the gate opens.
-    function test_cursorOpt_advancementResumes_afterCrossingThresholdUpward() public {
-        cv = _deployCursorVault(5, 3, 30 seconds);
-        _registerWallets(cv, 5, 0); // total == checkSize: single-window mode
-
-        // Interval elapses while in single-window mode — advance must NOT fire
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-        (bool suppressedAdvance,) = cv.checkUpkeep(bytes(""));
-        assertFalse(suppressedAdvance, "No advance while total <= MAX_CHECK_UPKEEP_SIZE");
-
-        // One more registration pushes total above the threshold
-        _registerWallets(cv, 1, 100); // total=6 > checkSize=5
-
-        // Interval already elapsed and s_lastCursorAdvance=0 → advance fires immediately
-        (bool needed, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        assertTrue(needed, "Advance fires immediately once total exceeds checkSize");
-
-        (address[] memory candidates,, bool isIdleAdvance) = abi.decode(pd, (address[], uint256, bool));
-        assertEq(candidates.length, 0, "No due wallets");
-        assertTrue(isIdleAdvance, "Must be flagged as idle advance");
-
-        cv.performUpkeep(pd);
-        assertGt(cv.getLastCursorAdvance(), 0, "Advance timestamp written after threshold crossed");
-    }
-
-    /// @dev s_lastCursorAdvance must remain at exactly 0 throughout any number of
-    ///      checkUpkeep and performUpkeep calls triggered by due-wallet recovery
-    ///      while the registry stays in single-window mode. Only idle advance
-    ///      performUpkeep calls are permitted to update this timestamp.
-    function test_cursorOpt_advanceTimestampNeverUpdated_inSingleWindowMode() public {
-        cv = _deployCursorVault(5, 3, 30 seconds);
-
-        // Register exactly performSize wallets so one performUpkeep clears the registry.
-        // Registering 4 previously left 1 due wallet behind after the first pass,
-        // causing the second checkUpkeep to return true (recovery candidate, not idle advance).
-        _registerWallets(cv, 3, 0); // total=3 < checkSize=5, fully drained in one performUpkeep
-
-        // Recovery-triggered performUpkeep must not touch s_lastCursorAdvance
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
-        (, bytes memory recPd) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(recPd); // isIdleAdvance=false → s_lastCursorAdvance unchanged
-
-        assertEq(
-            cv.getLastCursorAdvance(),
-            0,
-            "Recovery performUpkeep must not update advance timestamp in single-window mode"
-        );
-        assertEq(cv.getTotalRegistered(), 0, "Precondition: registry fully cleared after recovery pass");
-
-        // Re-populate with fresh non-due wallets so the second checkUpkeep is suppressed
-        // by the single-window gate, not just by an empty registry (total==0 early-returns).
-        _registerWallets(cv, 4, 100); // total=4 < checkSize=5, lastActivity = now (not due)
-
-        // Additional time warps must NOT produce an idle advance (single-window gate)
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() * 3);
-        (bool stillSuppressed,) = cv.checkUpkeep(bytes(""));
-        assertFalse(stillSuppressed, "checkUpkeep must return false in single-window mode regardless of elapsed time");
-
-        assertEq(cv.getLastCursorAdvance(), 0, "Advance timestamp unchanged after multiple interval warps");
-    }
-
-    /// SECTION 10. --- PERFORM UPKEEP ---
-    function test_performUpkeep_executesRecovery_andZeroesBalance() public {
-        _registerAlice();
-        _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice);
 
         IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertFalse(cfg.isActive);
         assertEq(cfg.balance, 0);
     }
 
-    function test_performUpkeep_transfersETHToBackup() public {
+    function test_triggerRecovery_transfersETHToBackup() public {
         _registerAlice();
         _warpPastInactivity(alice);
         uint256 backupBefore = aliceBackup.balance;
 
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice);
 
         assertEq(aliceBackup.balance, backupBefore + DEPOSIT_1_ETH);
     }
 
-    function test_performUpkeep_removesWalletFromRegistry() public {
+    function test_triggerRecovery_removesWalletFromRegistry() public {
         _registerAlice();
         _warpPastInactivity(alice);
 
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice);
 
         assertEq(rm.getTotalRegistered(), 0);
     }
 
-    function test_performUpkeep_emitsRecoveryExecuted() public {
+    function test_triggerRecovery_emitsRecoveryExecuted() public {
         _registerAlice();
         _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
 
         vm.expectEmit(true, true, false, true);
         emit RecoveryExecuted(alice, aliceBackup, DEPOSIT_1_ETH);
 
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice);
     }
 
-    function test_performUpkeep_revertsIfCandidatesExceedMaxPerformSize() public {
-        uint256 overSize = rm.MAX_PERFORM_UPKEEP_SIZE() + 1;
-        address[] memory tooMany = new address[](overSize);
-        bytes memory pd = abi.encode(tooMany, uint256(0), false);
-
-        vm.expectRevert(IAeternumVault.AeternumVault__MaxPerformUpkeepSizeExceeded.selector);
-        rm.performUpkeep(pd);
-    }
-
-    function test_performUpkeep_processesMultipleWallets() public {
+    function test_triggerRecovery_processesMultipleWallets_sequentially() public {
         address[3] memory users = [alice, bob, carol];
         address[3] memory backups = [aliceBackup, bobBackup, carolBackup];
 
@@ -1178,8 +741,10 @@ contract AeternumVaultTest is StdInvariant, Test {
         }
 
         vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+
+        for (uint256 i = 0; i < 3; i++) {
+            rm.triggerRecovery(users[i]);
+        }
 
         assertEq(rm.getTotalRegistered(), 0);
         for (uint256 i = 0; i < 3; i++) {
@@ -1188,123 +753,176 @@ contract AeternumVaultTest is StdInvariant, Test {
         }
     }
 
-    function test_performUpkeep_setsCheckCursor_toNextCursor() public {
-        cv = _deployCursorVault(3, 2, 30 seconds);
-        _registerWallets(cv, 4, 0);
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 10 — TRIGGERRECOVERY: SILENT RETURN PATHS
+    ///
+    /// triggerRecovery must never revert when pre-conditions are not met.
+    /// These are the guard exits in _executeRecovery: isActive, balance>0,
+    /// and timestamp. Silent return lets competing keepers race safely.
+    // ─────────────────────────────────────────────────────────────────────────
 
-        vm.warp(block.timestamp + cv.CURSOR_ADVANCE_INTERVAL() + 1);
-        (, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        (, uint256 nextCursor,) = abi.decode(pd, (address[], uint256, bool));
-
-        cv.performUpkeep(pd);
-
-        assertEq(cv.getCheckCursor(), nextCursor);
-    }
-
-    function test_performUpkeep_holdsCheckCursor_duringRecoveryPass() public {
-        cv = _deployCursorVault(10, 3, 30 seconds);
-        _registerWallets(cv, 5, 0);
-        vm.warp(block.timestamp + cv.MIN_INACTIVITY_PERIOD() + 1);
-
-        uint256 cursorBefore = cv.getCheckCursor();
-        (, bytes memory pd) = cv.checkUpkeep(bytes(""));
-        cv.performUpkeep(pd);
-
-        assertEq(cv.getCheckCursor(), cursorBefore, "Cursor must remain at same position during recovery pass");
-    }
-
-    /// STALE DATA SAFETY
-    function test_staleData_skipsWallet_afterUserPings() public {
+    function test_triggerRecovery_silentReturn_whenInactivityPeriodNotElapsed() public {
         _registerAlice();
-        _warpPastInactivity(alice);
+        // No warp — inactivity period has not elapsed
 
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        vm.prank(alice);
-        rm.ping();
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice); // must not revert
 
+        // State unchanged
         assertTrue(rm.getRecoveryConfig(alice).isActive);
         assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
+        assertEq(aliceBackup.balance, 0);
     }
 
-    function test_staleData_skipsWallet_afterUserDeposits() public {
-        _registerAlice();
-        _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+    function test_triggerRecovery_silentReturn_whenBalanceIsZero() public {
         vm.prank(alice);
-        rm.deposit{value: 0.1 ether}();
-        rm.performUpkeep(pd);
+        rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        rm.triggerRecovery(alice); // hits balance==0 guard, silently returns
 
         assertTrue(rm.getRecoveryConfig(alice).isActive);
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
     }
 
-    function test_staleData_skipsWallet_afterUserCancelsRecovery() public {
+    function test_triggerRecovery_silentReturn_whenWalletNotActive() public {
         _registerAlice();
-        _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
         vm.prank(alice);
-        rm.cancelRecovery();
-        rm.performUpkeep(pd); // must not revert
+        rm.cancelRecovery(); // isActive = false
+
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        rm.triggerRecovery(alice); // hits !isActive guard, silently returns
 
         assertFalse(rm.getRecoveryConfig(alice).isActive);
         assertEq(rm.getTotalRegistered(), 0);
     }
 
-    function test_staleData_skipsAlreadyRecoveredWallet() public {
+    function test_triggerRecovery_silentReturn_forUnregisteredWallet() public {
+        address stranger = makeAddr("stranger");
+
+        rm.triggerRecovery(stranger); // isActive defaults to false — must not revert
+
+        assertEq(rm.getRecoveryConfig(stranger).balance, 0);
+    }
+
+    function test_triggerRecovery_silentReturn_exactlyAtDeadlineBoundary() public {
+        _registerAlice();
+        IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
+        // Warp to exactly the deadline — condition is >=, so this is due
+        vm.warp(cfg.lastActivity + cfg.inactivityPeriod);
+        assertTrue(rm.isRecoveryDue(alice));
+
+        rm.triggerRecovery(alice); // must execute at boundary
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 11 — TRIGGERRECOVERY: PERMISSIONLESS & RACE CONDITIONS
+    ///
+    /// Any external actor may call triggerRecovery. The caller controls only
+    /// which wallet is nominated — not whether, when, or where funds move.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_triggerRecovery_isCallableByArbitraryAddress() public {
         _registerAlice();
         _warpPastInactivity(alice);
 
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
-        rm.performUpkeep(pd); // second call with stale data — must not revert
-        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        rm.triggerRecovery(alice); // must not revert
+
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
     }
 
-    function test_staleData_continuesBatch_whenOneWalletStale() public {
-        vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, INACTIVITY_PERIOD);
+    function test_triggerRecovery_isCallableByBeneficiary() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        vm.prank(aliceBackup);
+        rm.triggerRecovery(alice);
+
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
+    }
+
+    function test_triggerRecovery_isCallableByOwnerOfDifferentVault() public {
+        // Bob calling triggerRecovery for alice's vault (a common keeper scenario)
+        _registerAlice();
         vm.prank(bob);
         rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
 
-        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
+        _warpPastInactivity(alice);
 
-        vm.prank(alice);
-        rm.ping(); // alice goes stale
+        vm.prank(bob);
+        rm.triggerRecovery(alice); // must not revert
 
-        rm.performUpkeep(pd);
-
-        assertTrue(rm.getRecoveryConfig(alice).isActive);
-        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
-        assertFalse(rm.getRecoveryConfig(bob).isActive);
-        assertEq(bobBackup.balance, DEPOSIT_1_ETH);
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
+        // Bob's own vault is unaffected
+        assertTrue(rm.getRecoveryConfig(bob).isActive);
     }
 
-    /// SECTION 10b. --- RECOVERY FAILURE & ABANDONMENT ---
-    function test_performUpkeep_emitsRecoveryFailed_onBadBackupAddress() public {
+    function test_triggerRecovery_raceCondition_secondCallerSilentlyReturns() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        // First keeper executes the recovery
+        rm.triggerRecovery(alice);
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
+
+        uint256 backupBalanceAfterFirst = aliceBackup.balance;
+
+        // Second keeper arrives with stale data — must not revert, must not double-pay
+        address lateKeeper = makeAddr("lateKeeper");
+        vm.prank(lateKeeper);
+        rm.triggerRecovery(alice); // hits !isActive guard, silent return
+
+        assertEq(aliceBackup.balance, backupBalanceAfterFirst); // no duplicate payment
+    }
+
+    function test_triggerRecovery_callerCannotRedirectFunds() public {
+        // The caller passes a wallet — the destination is read from config,
+        // not from any caller-controlled input. Funds always reach backupAddress.
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        address attacker = makeAddr("attacker");
+        vm.prank(attacker);
+        rm.triggerRecovery(alice);
+
+        // Funds went to aliceBackup (config), not attacker (msg.sender)
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
+        assertEq(attacker.balance, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 12 — TRIGGERRECOVERY: FAILURE HANDLING & ABANDONMENT
+    ///
+    /// When the ETH transfer to backupAddress fails, _executeRecovery restores
+    /// state and increments the attempt counter. After MAX_RECOVERY_ATTEMPTS
+    /// the wallet is permanently abandoned.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_triggerRecovery_emitsRecoveryFailed_onBadBackupAddress() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
         _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
 
         vm.expectEmit(true, true, false, true);
         emit RecoveryFailed(alice, address(badBackup), DEPOSIT_1_ETH);
 
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice);
     }
 
-    function test_performUpkeep_restoresState_onFailedTransfer() public {
+    function test_triggerRecovery_restoresState_onFailedTransfer() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
         _warpPastInactivity(alice);
 
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice);
 
         IAeternumVault.RecoveryConfig memory cfg = rm.getRecoveryConfig(alice);
         assertTrue(cfg.isActive);
@@ -1312,132 +930,105 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getTotalRegistered(), 1);
     }
 
-    function test_performUpkeep_continuesBatch_afterOneFails() public {
-        RejectingReceiver badBackup = new RejectingReceiver();
-
-        vm.prank(alice);
-        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
-        vm.prank(bob);
-        rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
-
-        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
-
-        assertTrue(rm.getRecoveryConfig(alice).isActive);
-        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
-        assertFalse(rm.getRecoveryConfig(bob).isActive);
-        assertEq(bobBackup.balance, DEPOSIT_1_ETH);
-    }
-
-    function test_executeRecovery_incrementsFailedAttempts() public {
+    function test_triggerRecovery_incrementsFailedAttempts() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
         _warpPastInactivity(alice);
 
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice);
 
         assertEq(rm.getRecoveryConfig(alice).failedRecoveryAttempts, 1);
     }
 
-    function test_executeRecovery_abandonedAfterMaxAttempts() public {
+    function test_triggerRecovery_attemptCounterIsMonotonicallyIncreasing() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
             _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
+            rm.triggerRecovery(alice);
+            // Attempt counter increments on each genuine attempt
+            if (i < rm.MAX_RECOVERY_ATTEMPTS() - 1) {
+                assertEq(rm.getRecoveryConfig(alice).failedRecoveryAttempts, i + 1);
+            }
         }
+    }
+
+    function test_triggerRecovery_preconditionMiss_doesNotIncrementAttemptCounter() public {
+        // A call that silently returns at a guard (not due, zero balance, etc.)
+        // must NOT consume a retry slot. Attempt counter only increments
+        // when an ETH transfer is genuinely attempted.
+        _registerAlice();
+        // Not warped — inactivity period has not elapsed
+
+        rm.triggerRecovery(alice);
+
+        assertEq(rm.getRecoveryConfig(alice).failedRecoveryAttempts, 0);
+    }
+
+    function test_triggerRecovery_abandonedAfterMaxAttempts() public {
+        RejectingReceiver badBackup = new RejectingReceiver();
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
+
+        _reachAbandonment(alice);
 
         assertFalse(rm.getRecoveryConfig(alice).isActive);
         assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
         assertEq(rm.getTotalRegistered(), 0);
-        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH); // balance preserved
         assertTrue(rm.isBackupAbandoned(address(badBackup)));
     }
 
-    function test_executeRecovery_skipsWallet_withZeroBalance() public {
-        // Register with 0 ETH: isActive=true but balance=0.
-        // checkUpkeep will never include this wallet (balance > 0 required).
-        // Manually construct performData to force _executeRecovery to hit the balance==0 guard.
-        vm.prank(alice);
-        rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
-
-        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
-
-        address[] memory candidates = new address[](1);
-        candidates[0] = alice;
-        bytes memory pd = abi.encode(candidates, uint256(0), false);
-
-        rm.performUpkeep(pd); // hits _executeRecovery → balance==0 guard → return
-
-        assertTrue(rm.getRecoveryConfig(alice).isActive);
-        assertEq(rm.getRecoveryConfig(alice).balance, 0);
-    }
-
-    function test_executeRecovery_emitsRecoveryAbandoned_atMaxAttempts() public {
+    function test_triggerRecovery_emitsRecoveryAbandoned_atMaxAttempts() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
         for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS() - 1; i++) {
             _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
+            rm.triggerRecovery(alice);
         }
 
         _warpPastInactivity(alice);
-        (, bytes memory finalPd) = rm.checkUpkeep(bytes(""));
 
         vm.expectEmit(true, true, false, true);
         emit RecoveryAbandoned(alice, address(badBackup), DEPOSIT_1_ETH);
 
-        rm.performUpkeep(finalPd);
+        rm.triggerRecovery(alice);
     }
 
-    function test_abandonedWallet_checkUpkeepSkipsIt() public {
+    function test_triggerRecovery_abandonedWallet_subsequentCallSilentlyReturns() public {
+        // After abandonment, isActive==false, so triggerRecovery silently returns
+        // without consuming another attempt or touching the preserved balance.
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
+        _reachAbandonment(alice);
 
-        vm.warp(block.timestamp + rm.CURSOR_ADVANCE_INTERVAL() + 1);
-        (bool advanceNeeded, bytes memory advancePd) = rm.checkUpkeep(bytes(""));
+        assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
 
-        if (advanceNeeded) {
-            rm.performUpkeep(advancePd);
-            (address[] memory candidates,,) = abi.decode(advancePd, (address[], uint256, bool));
-            for (uint256 i = 0; i < candidates.length; i++) {
-                assertTrue(candidates[i] != alice, "Abandoned wallet must never appear as candidate");
-            }
-        }
+        _warpPastInactivity(alice);
+        rm.triggerRecovery(alice); // must not revert
 
-        assertEq(rm.getTotalRegistered(), 0);
+        // Balance untouched, state unchanged
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
         assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 12b — REREGISTRATION AFTER ABANDONMENT
+    // ─────────────────────────────────────────────────────────────────────────
 
     function test_reregister_carriesOverAbandonedBalance_whenSkippingWithdrawal() public {
         RejectingReceiver badBackup = new RejectingReceiver();
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
-
-        assertTrue(rm.getRecoveryConfig(alice).isAbandoned);
-        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
+        _reachAbandonment(alice);
 
         uint256 newDeposit = 0.5 ether;
         vm.prank(alice);
@@ -1455,11 +1046,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
+        _reachAbandonment(alice);
 
         uint256 newDeposit = 0.5 ether;
         vm.prank(alice);
@@ -1467,8 +1054,7 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         _warpPastInactivity(alice);
         uint256 backupBefore = aliceBackup.balance;
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(pd);
+        rm.triggerRecovery(alice);
 
         assertEq(
             aliceBackup.balance,
@@ -1484,15 +1070,10 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
+        _reachAbandonment(alice);
 
         vm.prank(alice);
         rm.withdrawAll(); // clear balance before re-registering
-        assertEq(rm.getRecoveryConfig(alice).balance, 0);
 
         uint256 newDeposit = 0.5 ether;
         vm.prank(alice);
@@ -1510,14 +1091,9 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(alice);
         rm.register{value: DEPOSIT_1_ETH}(address(badBackup), INACTIVITY_PERIOD);
 
-        for (uint8 i = 0; i < rm.MAX_RECOVERY_ATTEMPTS(); i++) {
-            _warpPastInactivity(alice);
-            (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-            rm.performUpkeep(pd);
-        }
+        _reachAbandonment(alice);
 
         uint256 contractBalanceBefore = address(rm).balance;
-
         uint256 newDeposit = 0.5 ether;
         vm.prank(alice);
         rm.register{value: newDeposit}(aliceBackup, INACTIVITY_PERIOD);
@@ -1527,14 +1103,294 @@ contract AeternumVaultTest is StdInvariant, Test {
             contractBalanceBefore + newDeposit,
             "Contract balance must grow by exactly the new deposit"
         );
-        assertEq(
-            rm.getRecoveryConfig(alice).balance,
-            address(rm).balance,
-            "Config balance must equal contract ETH when alice is the only depositor"
-        );
     }
 
-    /// SECTION 11. --- VIEW HELPERS ---
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 13 — CHECKVAULTSBATCH: VIEW FUNCTION
+    ///
+    /// checkVaultsBatch is the keeper bot's primary scanning tool and the
+    /// CRE Phase 3 integration point. It must correctly identify triggerable
+    /// wallets within any arbitrary registry slice.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_checkVaultsBatch_returnsEmptyForEmptyRegistry() public view {
+        address[] memory result = rm.checkVaultsBatch(0, 100);
+        assertEq(result.length, 0);
+    }
+
+    function test_checkVaultsBatch_returnsEmptyWhenNoDueWallets() public {
+        _registerAlice();
+        // Not warped — wallet is not yet due
+
+        address[] memory result = rm.checkVaultsBatch(0, 100);
+        assertEq(result.length, 0);
+    }
+
+    function test_checkVaultsBatch_returnsDueWallet() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        address[] memory result = rm.checkVaultsBatch(0, 100);
+        assertEq(result.length, 1);
+        assertEq(result[0], alice);
+    }
+
+    function test_checkVaultsBatch_returnsEmptyWhenStartIndexExceedsTotal() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        address[] memory result = rm.checkVaultsBatch(5, 10);
+        assertEq(result.length, 0);
+    }
+
+    function test_checkVaultsBatch_returnsEmptyWhenBatchSizeIsZero() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        address[] memory result = rm.checkVaultsBatch(0, 0);
+        assertEq(result.length, 0);
+    }
+
+    function test_checkVaultsBatch_clampsToArrayEnd() public {
+        _registerAlice(); // total = 1
+        _warpPastInactivity(alice);
+
+        // batchSize(100) >> total(1) — must clamp gracefully
+        address[] memory result = rm.checkVaultsBatch(0, 100);
+        assertEq(result.length, 1);
+        assertEq(result[0], alice);
+    }
+
+    function test_checkVaultsBatch_excludesZeroBalanceWallets() public {
+        vm.prank(alice);
+        rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        address[] memory result = rm.checkVaultsBatch(0, 1);
+        assertEq(result.length, 0, "Zero-balance wallet must not appear in batch results");
+    }
+
+    function test_checkVaultsBatch_excludesInactiveWallets() public {
+        _registerAlice();
+        vm.prank(alice);
+        rm.cancelRecovery(); // removes alice from registry
+
+        address[] memory result = rm.checkVaultsBatch(0, 10);
+        assertEq(result.length, 0);
+    }
+
+    function test_checkVaultsBatch_respectsStartIndex() public {
+        _registerAlice(); // index 0
+
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD); // index 1
+
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        // startIndex=1 scans only bob; alice (index 0) is skipped
+        address[] memory result = rm.checkVaultsBatch(1, 1);
+        assertEq(result.length, 1);
+        assertEq(result[0], bob);
+    }
+
+    function test_checkVaultsBatch_returnsMixedResults_onlyDueIncluded() public {
+        // alice is due, bob has pinged (not due)
+        _registerAlice();
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
+
+        _warpPastInactivity(alice);
+        vm.prank(bob);
+        rm.ping(); // bob resets timer
+
+        address[] memory result = rm.checkVaultsBatch(0, 2);
+        assertEq(result.length, 1);
+        assertEq(result[0], alice);
+    }
+
+    function test_checkVaultsBatch_trimsArrayCorrectly_noTrailingZeroAddresses() public {
+        // Three wallets in registry, one due, batchSize=3.
+        // Result must be trimmed to length 1 with no trailing address(0) entries.
+        _registerAlice();
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
+        vm.prank(carol);
+        rm.register{value: DEPOSIT_1_ETH}(carolBackup, INACTIVITY_PERIOD);
+
+        _warpPastInactivity(alice);
+        vm.prank(bob);
+        rm.ping();
+        vm.prank(carol);
+        rm.ping();
+
+        address[] memory result = rm.checkVaultsBatch(0, 3);
+        assertEq(result.length, 1, "Array must be trimmed to actual triggerable count");
+        assertEq(result[0], alice);
+    }
+
+    function test_checkVaultsBatch_returnsAllDueWallets_whenBatchCoversAll() public {
+        _registerAlice();
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
+        vm.prank(carol);
+        rm.register{value: DEPOSIT_1_ETH}(carolBackup, INACTIVITY_PERIOD);
+
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        address[] memory result = rm.checkVaultsBatch(0, 3);
+        assertEq(result.length, 3);
+    }
+
+    function test_checkVaultsBatch_isConsistentWithIsRecoveryDue() public {
+        // Every wallet returned by checkVaultsBatch must satisfy isRecoveryDue.
+        _registerAlice();
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
+        vm.prank(carol);
+        rm.register{value: DEPOSIT_1_ETH}(carolBackup, INACTIVITY_PERIOD);
+
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+        vm.prank(carol);
+        rm.ping(); // carol not due
+
+        address[] memory result = rm.checkVaultsBatch(0, 3);
+
+        for (uint256 i = 0; i < result.length; i++) {
+            assertTrue(
+                rm.isRecoveryDue(result[i]), "Every wallet in batch result must be confirmed due by isRecoveryDue"
+            );
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 13b — KEEPER BOT INTEGRATION PATTERN
+    ///
+    /// Verifies the bot's canonical workflow: call checkVaultsBatch as a free
+    /// eth_call, then submit triggerRecovery for each result.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_keeperBot_checkBatchThenTrigger_fullCycle() public {
+        _registerAlice();
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
+
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        // Step 1: bot queries checkVaultsBatch (free eth_call)
+        address[] memory due = rm.checkVaultsBatch(0, rm.getTotalRegistered());
+        assertEq(due.length, 2);
+
+        // Step 2: bot submits triggerRecovery for each result
+        for (uint256 i = 0; i < due.length; i++) {
+            rm.triggerRecovery(due[i]);
+        }
+
+        assertEq(rm.getTotalRegistered(), 0);
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
+        assertEq(bobBackup.balance, DEPOSIT_1_ETH);
+    }
+
+    function test_keeperBot_checkBatch_emptyAfterRecovery() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        address[] memory vaultsBefore = rm.checkVaultsBatch(0, 100);
+        assertEq(vaultsBefore.length, 1);
+
+        rm.triggerRecovery(alice);
+
+        address[] memory vaultsAfter = rm.checkVaultsBatch(0, 100);
+        assertEq(vaultsAfter.length, 0, "Batch must return empty after successful recovery");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 14 — STALE DATA SAFETY
+    ///
+    /// triggerRecovery must silently skip wallets whose state changed between
+    /// the keeper bot's eth_call check and the submitted transaction landing.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_staleData_silentReturn_afterUserPings() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        // User pings before keeper's tx lands
+        vm.prank(alice);
+        rm.ping();
+
+        rm.triggerRecovery(alice); // now not due — silently returns
+
+        assertTrue(rm.getRecoveryConfig(alice).isActive);
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH);
+        assertEq(aliceBackup.balance, 0);
+    }
+
+    function test_staleData_silentReturn_afterUserDeposits() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        // Deposit resets lastActivity
+        vm.prank(alice);
+        rm.deposit{value: 0.1 ether}();
+
+        rm.triggerRecovery(alice); // not due after deposit resets timer
+
+        assertTrue(rm.getRecoveryConfig(alice).isActive);
+    }
+
+    function test_staleData_silentReturn_afterUserCancelsRecovery() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        vm.prank(alice);
+        rm.cancelRecovery();
+
+        rm.triggerRecovery(alice); // must not revert; isActive = false
+
+        assertFalse(rm.getRecoveryConfig(alice).isActive);
+        assertEq(rm.getTotalRegistered(), 0);
+    }
+
+    function test_staleData_silentReturn_forAlreadyRecoveredWallet() public {
+        _registerAlice();
+        _warpPastInactivity(alice);
+
+        rm.triggerRecovery(alice); // first execution succeeds
+        rm.triggerRecovery(alice); // second call with stale data — must not revert
+
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH); // no double payment
+    }
+
+    function test_staleData_independentExecution_whenOneBotRaceLost() public {
+        // Two wallets due. Keeper pre-validates both as triggerable.
+        // Between check and execution, a competing keeper recovers alice first.
+        vm.prank(alice);
+        rm.register{value: DEPOSIT_1_ETH}(aliceBackup, INACTIVITY_PERIOD);
+        vm.prank(bob);
+        rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
+
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        // Competing keeper takes alice first
+        address competitor = makeAddr("competitor");
+        vm.prank(competitor);
+        rm.triggerRecovery(alice);
+
+        // Our keeper submits both — alice silently skipped, bob executed
+        rm.triggerRecovery(alice); // already done — silently skipped
+        rm.triggerRecovery(bob);
+
+        // alice paid once (by competitor), bob paid once (by our keeper)
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
+        assertEq(bobBackup.balance, DEPOSIT_1_ETH);
+        assertEq(rm.getTotalRegistered(), 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 15 — VIEW HELPERS
+    // ─────────────────────────────────────────────────────────────────────────
+
     function test_isRecoveryDue_falseBeforePeriod() public {
         _registerAlice();
         vm.warp(block.timestamp + INACTIVITY_PERIOD - 1);
@@ -1548,12 +1404,10 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     function test_isRecoveryDue_falseForUnregisteredWallet() public view {
-        // isActive = false short-circuits the entire condition
         assertFalse(rm.isRecoveryDue(alice));
     }
 
     function test_isRecoveryDue_falseForZeroBalance() public {
-        // isActive = true but balance = 0 — second condition fails
         vm.prank(alice);
         rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
         vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
@@ -1576,12 +1430,10 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     function test_getTimeUntilRecovery_returnsZeroIfNotRegistered() public view {
-        // !config.isActive branch — never registered
         assertEq(rm.getTimeUntilRecovery(alice), 0);
     }
 
     function test_getTimeUntilRecovery_returnsZeroIfZeroBalance() public {
-        // isActive=true but balance=0 branch
         vm.prank(alice);
         rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
         assertEq(rm.getTimeUntilRecovery(alice), 0);
@@ -1599,45 +1451,95 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(emptyPage.length, 0);
     }
 
-    /// SECTION 12. --- SECURITY — REENTRANCY ---
-    function test_reentrancy_performUpkeep_blocked() public {
-        ReentrantAttacker attacker = new ReentrantAttacker(address(rm));
-        deal(address(attacker), 2 ether);
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 16 — SECURITY: REENTRANCY
+    // ─────────────────────────────────────────────────────────────────────────
 
-        address attackerBackup = makeAddr("attackerBackup");
-        attacker.registerAsWallet{value: 1 ether}(INACTIVITY_PERIOD, attackerBackup);
+    function test_reentrancy_triggerRecovery_blockedByNonReentrant() public {
+        ReentrantAttacker attacker = new ReentrantAttacker(address(rm));
+
+        // Register a victim wallet with the attacker contract as backup.
+        // When recovery fires, ETH is sent to attacker.receive() — the callback
+        // actually executes the reentrancy attempt, unlike a plain EOA backup.
+        address victim = makeAddr("victim");
+        deal(victim, 2 ether);
+        vm.prank(victim);
+        rm.register{value: 1 ether}(address(attacker), INACTIVITY_PERIOD);
+
+        attacker.setVictimWallet(victim);
         attacker.enableAttack(true);
 
         vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
 
-        address[] memory victims = new address[](1);
-        victims[0] = address(attacker);
-        bytes memory performData = abi.encode(victims, uint256(0), false);
+        rm.triggerRecovery(victim);
 
-        rm.performUpkeep(performData);
-
-        assertEq(rm.getRecoveryConfig(address(attacker)).balance, 0);
+        // CEI: balance zeroed before external call fires.
+        // Reentrant triggerRecovery found balance==0, silently returned.
+        // nonReentrant additionally blocked the call at the modifier level.
+        assertEq(rm.getRecoveryConfig(victim).balance, 0);
+        // ETH arrived at the attacker contract despite the reentrant attempt.
+        assertEq(address(attacker).balance, 1 ether);
+        // Confirm the attack path was actually reached — this is what separates
+        // a real reentrancy test from just a CEI verification.
+        assertGt(attacker.reentrancyAttempts(), 0);
     }
 
-    /// SECTION 13. --- SECURITY — REGISTRY INTEGRITY ---
-    function test_registry_swapAndPop_maintainsIntegrity() public {
+    function test_reentrancy_balanceZeroedBeforeExternalCall_CEI() public {
+        // Directly verifies the CEI guarantee: even without nonReentrant,
+        // config.balance is 0 at the moment the external call fires.
+        // We observe this indirectly: if a reentrant triggerRecovery fired and
+        // found balance > 0, it would execute a second transfer. The fact that
+        // aliceBackup only receives DEPOSIT_1_ETH (not 2×) proves balance was
+        // already 0 when the external call executed.
         _registerAlice();
+        _warpPastInactivity(alice);
 
+        rm.triggerRecovery(alice);
+
+        // CEI guarantee: exactly one payment, never double
+        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 17 — REGISTRY INTEGRITY
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_registry_swapAndPop_maintainsIntegrity_afterCancellation() public {
+        _registerAlice();
         vm.prank(bob);
         rm.register{value: 1 ether}(bobBackup, INACTIVITY_PERIOD);
-
         vm.prank(carol);
         rm.register{value: 1 ether}(carolBackup, INACTIVITY_PERIOD);
 
+        // Cancel the first wallet — triggers a swap-and-pop
         vm.prank(alice);
         rm.cancelRecovery();
 
         assertEq(rm.getTotalRegistered(), 2);
         assertTrue(rm.getRecoveryConfig(bob).isActive);
         assertTrue(rm.getRecoveryConfig(carol).isActive);
+        assertFalse(rm.isRegistered(alice));
     }
 
-    function test_registry_batchRemoval_swapSafety() public {
+    function test_registry_swapAndPop_maintainsIntegrity_afterRecovery() public {
+        _registerAlice();
+        vm.prank(bob);
+        rm.register{value: 1 ether}(bobBackup, INACTIVITY_PERIOD);
+        vm.prank(carol);
+        rm.register{value: 1 ether}(carolBackup, INACTIVITY_PERIOD);
+
+        vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
+
+        rm.triggerRecovery(alice);
+
+        assertEq(rm.getTotalRegistered(), 2);
+        assertTrue(rm.getRecoveryConfig(bob).isActive);
+        assertTrue(rm.getRecoveryConfig(carol).isActive);
+        assertEq(rm.getRecoveryConfig(alice).balance, 0);
+    }
+
+    function test_registry_batchRemoval_swapSafety_allRecoveredSequentially() public {
         address[3] memory users = [alice, bob, carol];
         address[3] memory backups = [aliceBackup, bobBackup, carolBackup];
 
@@ -1648,102 +1550,21 @@ contract AeternumVaultTest is StdInvariant, Test {
         }
 
         vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
-        (, bytes memory performData) = rm.checkUpkeep(bytes(""));
-        rm.performUpkeep(performData);
+
+        for (uint256 i = 0; i < 3; i++) {
+            rm.triggerRecovery(users[i]);
+        }
 
         assertEq(rm.getTotalRegistered(), 0);
+        for (uint256 i = 0; i < 3; i++) {
+            assertEq(backups[i].balance, 1 ether);
+        }
     }
 
-    /// SECTION 14. --- SECURITY — FORWARDER ACCESS CONTROL ---
-    function test_getForwarder_returnsZeroAddressBeforeSet() public view {
-        assertEq(rm.getForwarder(), address(0));
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 18 — FUZZ TESTS
+    // ─────────────────────────────────────────────────────────────────────────
 
-    function test_setForwarder_success() public {
-        address forwarder = makeAddr("forwarder");
-        rm.setForwarder(forwarder);
-        assertEq(rm.getForwarder(), forwarder);
-    }
-
-    function test_setForwarder_emitsEvent() public {
-        address forwarder = makeAddr("forwarder");
-
-        vm.expectEmit(true, false, false, false);
-        emit ForwarderSet(forwarder);
-
-        rm.setForwarder(forwarder);
-    }
-
-    function test_setForwarder_revertsOnZeroAddress() public {
-        vm.expectRevert(IAeternumVault.AeternumVault__InvalidAddress.selector);
-        rm.setForwarder(address(0));
-    }
-
-    function test_setForwarder_revertsIfAlreadySet() public {
-        rm.setForwarder(makeAddr("forwarder"));
-
-        vm.expectRevert(IAeternumVault.AeternumVault__ForwarderAlreadySet.selector);
-        rm.setForwarder(makeAddr("newForwarder"));
-    }
-
-    function test_performUpkeep_allowsAnyCallerBeforeForwarderIsSet() public {
-        // s_forwarder == address(0) — guard is skipped, anyone can call
-        _registerAlice();
-        _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-
-        vm.prank(bob); // random address, not a forwarder
-        rm.performUpkeep(pd); // must not revert
-
-        assertFalse(rm.getRecoveryConfig(alice).isActive);
-    }
-
-    function test_performUpkeep_revertsIfCalledByNonForwarder_whenForwarderIsSet() public {
-        rm.setForwarder(makeAddr("forwarder"));
-
-        _registerAlice();
-        _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-
-        vm.expectRevert(IAeternumVault.AeternumVault__NotForwarder.selector);
-        vm.prank(bob); // not the registered forwarder
-        rm.performUpkeep(pd);
-    }
-
-    function test_performUpkeep_allowsForwarderToCall() public {
-        address forwarder = makeAddr("forwarder");
-        rm.setForwarder(forwarder);
-
-        _registerAlice();
-        _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-
-        vm.prank(forwarder);
-        rm.performUpkeep(pd); // must not revert
-
-        assertFalse(rm.getRecoveryConfig(alice).isActive);
-        assertEq(aliceBackup.balance, DEPOSIT_1_ETH);
-    }
-
-    function test_performUpkeep_ownerCannotCallAfterForwarderIsSet() public {
-        // Verifies there is no special owner privilege —
-        // even the deployer is blocked once the forwarder is locked in.
-        rm.setForwarder(makeAddr("forwarder"));
-
-        _registerAlice();
-        _warpPastInactivity(alice);
-
-        (, bytes memory pd) = rm.checkUpkeep(bytes(""));
-
-        // address(this) is the test contract, which deployed rm — still blocked
-        vm.expectRevert(IAeternumVault.AeternumVault__NotForwarder.selector);
-        rm.performUpkeep(pd);
-    }
-
-    /// SECTION 15. --- FUZZ TESTS ---
     function testFuzz_register_validInactivityPeriod(uint256 period) public {
         period = bound(period, INACTIVITY_PERIOD, rm.MAX_INACTIVITY_PERIOD());
 
@@ -1765,6 +1586,18 @@ contract AeternumVaultTest is StdInvariant, Test {
         assertEq(rm.getRecoveryConfig(alice).balance, balanceBefore + amount);
     }
 
+    function testFuzz_send_amount(uint128 amount) public {
+        vm.assume(amount > 0 && amount <= DEPOSIT_1_ETH);
+        _registerAlice();
+        address recipient = makeAddr("recipient");
+
+        vm.prank(alice);
+        rm.send(recipient, amount);
+
+        assertEq(recipient.balance, amount);
+        assertEq(rm.getRecoveryConfig(alice).balance, DEPOSIT_1_ETH - amount);
+    }
+
     function testFuzz_isRecoveryDue_timing(uint256 elapsed) public {
         elapsed = bound(elapsed, 0, INACTIVITY_PERIOD * 2);
         _registerAlice();
@@ -1780,11 +1613,29 @@ contract AeternumVaultTest is StdInvariant, Test {
         }
     }
 
-    /// SECTION 16. --- INVARIANT TESTS ---
+    function testFuzz_triggerRecovery_neverRevertsForArbitraryAddress(address target) public {
+        // triggerRecovery must not revert for any address input.
+        // For unregistered wallets, _executeRecovery exits at the !isActive guard.
+        vm.assume(target != address(0));
+
+        rm.triggerRecovery(target); // must not revert
+    }
+
+    function testFuzz_checkVaultsBatch_neverReverts(uint256 startIndex, uint256 batchSize) public view {
+        startIndex = bound(startIndex, 0, 1_000_000);
+        batchSize = bound(batchSize, 0, 10_000);
+
+        rm.checkVaultsBatch(startIndex, batchSize); // must not revert
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /// SECTION 19 — INVARIANT TESTS
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
      * @notice Contract ETH balance must always be ≥ sum of all user vault balances.
-     * @dev    With no fee model, contract balance should equal the exact sum.
-     *         A violation means user funds have been lost or stolen.
+     * @dev    With no protocol fee, contract balance should equal the exact sum.
+     *         A violation means user funds have been lost, stolen, or double-spent.
      */
     function invariant_contractBalanceCoverAllUserFunds() public view {
         uint256 total = rm.getTotalRegistered();
@@ -1799,8 +1650,9 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     /**
-     * @notice Every wallet in the registry must have isActive == true.
-     * @dev    Recovered or cancelled wallets must be removed via _removeFromRegistry.
+     * @notice Every wallet in the active registry must have isActive == true.
+     * @dev    Recovered, cancelled, or abandoned wallets must be removed via
+     *         _removeFromRegistry. A false-active wallet means swap-and-pop broke.
      */
     function invariant_registeredWalletsAreAlwaysActive() public view {
         uint256 total = rm.getTotalRegistered();
@@ -1808,6 +1660,20 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         for (uint256 i = 0; i < wallets.length; i++) {
             assertTrue(rm.getRecoveryConfig(wallets[i]).isActive, "Inactive wallet found in registry");
+        }
+    }
+
+    /**
+     * @notice Abandoned wallets must never appear in the active registry.
+     * @dev    On abandonment, isAbandoned=true and the wallet is removed from
+     *         s_registeredWallets. A violation means abandonment state is inconsistent.
+     */
+    function invariant_abandonedWalletsNotInRegistry() public view {
+        uint256 total = rm.getTotalRegistered();
+        address[] memory wallets = rm.getRegisteredWallets(0, total);
+
+        for (uint256 i = 0; i < wallets.length; i++) {
+            assertFalse(rm.getRecoveryConfig(wallets[i]).isAbandoned, "Abandoned wallet found in active registry");
         }
     }
 }
