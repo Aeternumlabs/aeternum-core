@@ -54,7 +54,7 @@ contract HelperConfig is Script {
      *        Recovery is triggered via the permissionless `triggerRecovery(wallet)`
      *        function. The Aeternum keeper bot monitors all registered wallets
      *        via the Ponder indexer and submits transactions when conditions are met.
-     *        Gas costs (~150–200k gas per recovery) are absorbed as a protocol
+     *        Gas costs (~91k gas per recovery, measured) are absorbed as a protocol
      *        operating expense. Any external actor may also call `triggerRecovery`
      *        as a liveness guarantee.
      *
