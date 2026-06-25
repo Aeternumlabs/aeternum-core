@@ -1,6 +1,6 @@
 # Contribution Guidelines
 
-Thanks for your interest in contributing to Aeternum Core! This repository is the home of the core Aeternum vault contract and its security-focused test suite. We are building in public and welcome contributions of any size — from issue reports and reviews to tests, documentation, and code improvements.
+Thanks for your interest in contributing to **Aeternum Core!** This repository is the home of the core Aeternum vault contract and its security-focused test suite. We are building in public and welcome contributions of any size — from issue reports and reviews to tests, documentation, and code improvements.
 
 If you want to get in touch with repository maintainers, the best way is to open an issue on GitHub and we will respond there.
 
