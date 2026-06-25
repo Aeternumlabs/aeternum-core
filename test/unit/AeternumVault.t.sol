@@ -11,7 +11,7 @@ import {RejectingCallerMock} from "../mocks/RejectingCallerMock.sol";
 
 /**
  * @title  AeternumVaultTest
- * @notice Comprehensive test suite for AeternumVault — Phase 1 keeper architecture.
+ * @notice Comprehensive test suite for AeternumVault — Phase 1.
  *
  *         Coverage areas:
  *           • Deployment / constructor
@@ -132,7 +132,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 1 — CONSTRUCTOR / DEPLOYMENT
+    // SECTION 1 — CONSTRUCTOR / DEPLOYMENT
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_constructor_initialState() public view {
@@ -163,7 +163,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 2 — REGISTER: SUCCESS PATHS
+    // SECTION 2 — REGISTER: SUCCESS PATHS
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_register_storesConfig() public {
@@ -228,7 +228,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 3 — REGISTER: REVERT PATHS
+    // SECTION 3 — REGISTER: REVERT PATHS
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_register_revertsIfAlreadyRegistered() public {
@@ -285,7 +285,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 4 — DEPOSIT
+    // SECTION 4 — DEPOSIT
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_deposit_increasesBalance() public {
@@ -337,7 +337,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 5 — WITHDRAWALL
+    // SECTION 5 — WITHDRAWALL
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_withdrawAll_emptiesBalance() public {
@@ -379,7 +379,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 5b — SEND
+    // SECTION 5b — SEND
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_send_transfersETHtoRecipient() public {
@@ -462,7 +462,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 6 — PING
+    // SECTION 6 — PING
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_ping_resetsLastActivity() public {
@@ -503,7 +503,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 7 — CONFIG UPDATES
+    // SECTION 7 — CONFIG UPDATES
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_updateBackupAddress_success() public {
@@ -592,7 +592,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 8 — CANCEL RECOVERY
+    // SECTION 8 — CANCEL RECOVERY
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_cancelRecovery_refundsBalance() public {
@@ -687,7 +687,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 9 — TRIGGERRECOVERY: CORE EXECUTION PATHS
+    // SECTION 9 — TRIGGERRECOVERY: CORE EXECUTION PATHS
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_triggerRecovery_executesRecovery_andZeroesBalance() public {
@@ -754,11 +754,11 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 10 — TRIGGERRECOVERY: SILENT RETURN PATHS
-    ///
-    /// triggerRecovery must never revert when pre-conditions are not met.
-    /// These are the guard exits in _executeRecovery: isActive, balance>0,
-    /// and timestamp. Silent return lets competing keepers race safely.
+    // SECTION 10 — TRIGGERRECOVERY: SILENT RETURN PATHS
+    //
+    // triggerRecovery must never revert when pre-conditions are not met.
+    // These are the guard exits in _executeRecovery: isActive, balance>0,
+    // and timestamp. Silent return lets competing keepers race safely.
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_triggerRecovery_silentReturn_whenInactivityPeriodNotElapsed() public {
@@ -817,10 +817,10 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 11 — TRIGGERRECOVERY: PERMISSIONLESS & RACE CONDITIONS
-    ///
-    /// Any external actor may call triggerRecovery. The caller controls only
-    /// which wallet is nominated — not whether, when, or where funds move.
+    // SECTION 11 — TRIGGERRECOVERY: PERMISSIONLESS & RACE CONDITIONS
+    //
+    // Any external actor may call triggerRecovery. The caller controls only
+    // which wallet is nominated — not whether, when, or where funds move.
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_triggerRecovery_isCallableByArbitraryAddress() public {
@@ -897,11 +897,11 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 12 — TRIGGERRECOVERY: FAILURE HANDLING & ABANDONMENT
-    ///
-    /// When the ETH transfer to backupAddress fails, _executeRecovery restores
-    /// state and increments the attempt counter. After MAX_RECOVERY_ATTEMPTS
-    /// the wallet is permanently abandoned.
+    // SECTION 12 — TRIGGERRECOVERY: FAILURE HANDLING & ABANDONMENT
+    //
+    // When the ETH transfer to backupAddress fails, _executeRecovery restores
+    // state and increments the attempt counter. After MAX_RECOVERY_ATTEMPTS
+    // the wallet is permanently abandoned.
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_triggerRecovery_emitsRecoveryFailed_onBadBackupAddress() public {
@@ -1020,7 +1020,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 12b — REREGISTRATION AFTER ABANDONMENT
+    // SECTION 12b — REREGISTRATION AFTER ABANDONMENT
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_reregister_carriesOverAbandonedBalance_whenSkippingWithdrawal() public {
@@ -1106,11 +1106,11 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 13 — CHECKVAULTSBATCH: VIEW FUNCTION
-    ///
-    /// checkVaultsBatch is the keeper bot's primary scanning tool and the
-    /// CRE Phase 3 integration point. It must correctly identify triggerable
-    /// wallets within any arbitrary registry slice.
+    // SECTION 13 — CHECKVAULTSBATCH: VIEW FUNCTION
+    //
+    // checkVaultsBatch is the keeper bot's primary scanning tool and the
+    // CRE Phase 3 integration point. It must correctly identify triggerable
+    // wallets within any arbitrary registry slice.
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_checkVaultsBatch_returnsEmptyForEmptyRegistry() public view {
@@ -1263,10 +1263,10 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 13b — KEEPER BOT INTEGRATION PATTERN
-    ///
-    /// Verifies the bot's canonical workflow: call checkVaultsBatch as a free
-    /// eth_call, then submit triggerRecovery for each result.
+    // SECTION 13b — KEEPER BOT INTEGRATION PATTERN
+    //
+    // Verifies the bot's canonical workflow: call checkVaultsBatch as a free
+    // eth_call, then submit triggerRecovery for each result.
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_keeperBot_checkBatchThenTrigger_fullCycle() public {
@@ -1304,10 +1304,10 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 14 — STALE DATA SAFETY
-    ///
-    /// triggerRecovery must silently skip wallets whose state changed between
-    /// the keeper bot's eth_call check and the submitted transaction landing.
+    // SECTION 14 — STALE DATA SAFETY
+    //
+    // triggerRecovery must silently skip wallets whose state changed between
+    // the keeper bot's eth_call check and the submitted transaction landing.
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_staleData_silentReturn_afterUserPings() public {
@@ -1388,7 +1388,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 15 — VIEW HELPERS
+    // SECTION 15 — VIEW HELPERS
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_isRecoveryDue_falseBeforePeriod() public {
@@ -1452,7 +1452,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 16 — SECURITY: REENTRANCY
+    // SECTION 16 — SECURITY: REENTRANCY
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_reentrancy_triggerRecovery_blockedByNonReentrant() public {
@@ -1502,7 +1502,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 17 — REGISTRY INTEGRITY
+    // SECTION 17 — REGISTRY INTEGRITY
     // ─────────────────────────────────────────────────────────────────────────
 
     function test_registry_swapAndPop_maintainsIntegrity_afterCancellation() public {
@@ -1562,7 +1562,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 18 — FUZZ TESTS
+    // SECTION 18 — FUZZ TESTS
     // ─────────────────────────────────────────────────────────────────────────
 
     function testFuzz_register_validInactivityPeriod(uint256 period) public {
@@ -1629,7 +1629,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /// SECTION 19 — INVARIANT TESTS
+    // SECTION 19 — INVARIANT TESTS
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
