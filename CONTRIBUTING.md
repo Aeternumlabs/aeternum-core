@@ -51,7 +51,7 @@ Use the following commands to run tests and validate your changes:
 - `forge fmt` — format Solidity sources.
 - `forge test --isolate` — run all tests in isolation and update snapshots if necessary.
 - `forge test --match-path test/unit/AeternumVault.t.sol` — run the contract-specific unit test suite.
-- `forge test --match-path test/echidna/AeternumVaultEchidna.sol` — run property-based fuzz tests.
+- `forge test --match-path test/invariant/AeternumVaultEchidna.sol` — run property-based fuzz tests.
 
 If you add new functionality, include tests for both normal and edge-case behavior.
 
