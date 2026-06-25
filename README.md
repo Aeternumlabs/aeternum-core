@@ -3,7 +3,7 @@
 [![Lint](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/lint.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/lint.yml) 
 [![Tests](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/test.yml)
 [![Slither](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/slither.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/slither.yml)
-[![License: BUSL 1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](./LICENSE)
+[![License: BUSL 1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](https://github.com/Aeternumlabs/aeternum-core/blob/main/LICENSE.md)
 
 A non-custodial, automated inheritance protocol for Ethereum assets.
 
@@ -67,9 +67,6 @@ aeternum-core/
 │
 ├── audits/
 │   └── 2026-05-04_Aeternum-core_audit.pdf         ← Security audit report
-│
-├── docs/
-│   └── Aeternum-core_technical_doc.pdf            ← Protocol technical documentation
 │
 ├── lib/
 │   ├── forge-std                                  ← Foundry standard library
@@ -328,7 +325,7 @@ After deploying the contract:
 
 ### Bug Bounty
 
-> Details to be announced.
+> Details to be announced soon.
 
 ## License
 
