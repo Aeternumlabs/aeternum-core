@@ -13,7 +13,7 @@ import {HelperConfig} from "./HelperConfig.s.sol";
  *   # Local Anvil
  *   forge script script/Deploy.s.sol --rpc-url localhost --broadcast
  *
- *   # Sepolia testnet (dry-run first — always recommended)
+ *   # Sepolia testnet (dry-run first — recommended)
  *   forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL
  *
  *   # Sepolia testnet (broadcast + verify on Etherscan)
