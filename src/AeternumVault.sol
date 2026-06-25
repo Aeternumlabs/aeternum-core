@@ -69,7 +69,7 @@ import {IAeternumVault} from "./interfaces/IAeternumVault.sol";
  *         • Array manipulation: swap-and-pop O(1) removal keeps indices consistent
  *           across concurrent recovery executions.
  *         • Direct ETH transfers: a `receive()` function explicitly reverts with a
- *           clear error, preventing accidental ETH loss.
+ *           clear error, preventing accidental fund loss.
  */
 contract AeternumVault is IAeternumVault, ReentrancyGuard {
     /// --- IMMUTABLES ---
