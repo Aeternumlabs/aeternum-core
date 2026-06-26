@@ -98,7 +98,7 @@ interface IAeternumVault {
 
     // Keeper interface
     function triggerRecovery(address wallet) external;
-    function checkVaultsBatch(uint256 startIndex, uint256 batchSize)
+    function getTriggerableVaultsBatch(uint256 startIndex, uint256 batchSize)
         external
         view
         returns (address[] memory triggerable);

@@ -39,7 +39,7 @@ AeternumVault
 │
 └── Keeper Interface (permissionless)
     ├── triggerRecovery(wallet)         — permissionless recovery entry point
-    └── checkVaultsBatch(start, size)   — batch view for efficient keeper scanning
+    └── getTriggerableVaultsBatch(start, size)   — batch view for efficient keeper scanning
 ```
 
 ## Repository Structure
@@ -89,7 +89,7 @@ aeternum-core/
 |---|---|---|
 | **User** | Register, deposit, send, withdrawAll, ping, update config, cancel | Access other users' funds |
 | **Aeternum keeper bot** | Call `triggerRecovery(wallet)` when inactivity conditions are met | Alter configs, redirect funds, or trigger early recovery |
-| **Anyone** | Call `triggerRecovery(wallet)` (permissionless) and `checkVaultsBatch` (view) | Force recovery before the inactivity period elapses |
+| **Anyone** | Call `triggerRecovery(wallet)` (permissionless) and `getTriggerableVaultsBatch` (view) | Force recovery before the inactivity period elapses |
 | **No one** | — | Pause recovery, upgrade the contract, or access user funds |
 
 ## How It Works

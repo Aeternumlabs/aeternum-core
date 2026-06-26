@@ -29,7 +29,7 @@ import {IAeternumVault} from "../../src/interfaces/IAeternumVault.sol";
  *         9.  Inactivity period never exceeds MAX_INACTIVITY_PERIOD
  *         10. Failed recovery attempts never exceed MAX_RECOVERY_ATTEMPTS
  *         11. Abandoned wallets are never present in the registry
- *         12. Every address returned by checkVaultsBatch satisfies isRecoveryDue
+ *         12. Every address returned by getTriggerableVaultsBatch satisfies isRecoveryDue
  *
  *         ACTORS
  *         ─────────────────────────────────────────────────────────────────────
@@ -386,18 +386,18 @@ contract AeternumVaultEchidna {
     }
 
     /**
-     * @notice PROPERTY 12: Every address returned by checkVaultsBatch must satisfy isRecoveryDue.
-     * @dev    checkVaultsBatch is the keeper bot's primary scanning tool. Any wallet it
+     * @notice PROPERTY 12: Every address returned by getTriggerableVaultsBatch must satisfy isRecoveryDue.
+     * @dev    getTriggerableVaultsBatch is the keeper bot's primary scanning tool. Any wallet it
      *         returns must independently satisfy all three recovery conditions:
      *         isActive == true, balance > 0, and timestamp >= lastActivity + inactivityPeriod.
      *         A violation means the batch view is returning wallets that are not actually
      *         triggerable, which would cause the keeper bot to waste gas on no-op calls.
      */
-    function echidna_checkVaultsBatchConsistency() external view returns (bool) {
+    function echidna_getTriggerableVaultsBatchConsistency() external view returns (bool) {
         uint256 total = vault.getTotalRegistered();
         if (total == 0) return true;
 
-        address[] memory triggerable = vault.checkVaultsBatch(0, total);
+        address[] memory triggerable = vault.getTriggerableVaultsBatch(0, total);
 
         for (uint256 i = 0; i < triggerable.length; i++) {
             if (!vault.isRecoveryDue(triggerable[i])) return false;

@@ -88,7 +88,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard {
 
     /**
      * @dev Ordered list of all registered wallet addresses.
-     *      Consumed by `checkVaultsBatch` for keeper scanning; mutated by
+     *      Consumed by `getTriggerableVaultsBatch` for keeper scanning; mutated by
      *      `_removeFromRegistry` using swap-and-pop for O(1) removal.
      */
     address[] private s_registeredWallets;
@@ -387,7 +387,7 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard {
      * @return triggerable Wallet addresses currently eligible for recovery.
      *                     Empty array if none are due in the requested range.
      */
-    function checkVaultsBatch(uint256 startIndex, uint256 batchSize)
+    function getTriggerableVaultsBatch(uint256 startIndex, uint256 batchSize)
         external
         view
         returns (address[] memory triggerable)

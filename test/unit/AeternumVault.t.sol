@@ -24,7 +24,7 @@ import {RejectingCallerMock} from "../mocks/RejectingCallerMock.sol";
  *           • triggerRecovery — silent return paths (pre-condition misses)
  *           • triggerRecovery — permissionless caller set & race conditions
  *           • triggerRecovery — failure handling & abandonment retry cycle
- *           • checkVaultsBatch — all branching paths
+ *           • getTriggerableVaultsBatch — all branching paths
  *           • Stale data safety
  *           • Security (reentrancy, CEI double-spend prevention)
  *           • Registry integrity (swap-and-pop)
@@ -1106,80 +1106,80 @@ contract AeternumVaultTest is StdInvariant, Test {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // SECTION 13 — CHECKVAULTSBATCH: VIEW FUNCTION
+    // SECTION 13 — getTriggerableVaultsBatch: VIEW FUNCTION
     //
-    // checkVaultsBatch is the keeper bot's primary scanning tool and the
+    // getTriggerableVaultsBatch is the keeper bot's primary scanning tool and the
     // CRE Phase 3 integration point. It must correctly identify triggerable
     // wallets within any arbitrary registry slice.
     // ─────────────────────────────────────────────────────────────────────────
 
-    function test_checkVaultsBatch_returnsEmptyForEmptyRegistry() public view {
-        address[] memory result = rm.checkVaultsBatch(0, 100);
+    function test_getTriggerableVaultsBatch_returnsEmptyForEmptyRegistry() public view {
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 100);
         assertEq(result.length, 0);
     }
 
-    function test_checkVaultsBatch_returnsEmptyWhenNoDueWallets() public {
+    function test_getTriggerableVaultsBatch_returnsEmptyWhenNoDueWallets() public {
         _registerAlice();
         // Not warped — wallet is not yet due
 
-        address[] memory result = rm.checkVaultsBatch(0, 100);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 100);
         assertEq(result.length, 0);
     }
 
-    function test_checkVaultsBatch_returnsDueWallet() public {
+    function test_getTriggerableVaultsBatch_returnsDueWallet() public {
         _registerAlice();
         _warpPastInactivity(alice);
 
-        address[] memory result = rm.checkVaultsBatch(0, 100);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 100);
         assertEq(result.length, 1);
         assertEq(result[0], alice);
     }
 
-    function test_checkVaultsBatch_returnsEmptyWhenStartIndexExceedsTotal() public {
+    function test_getTriggerableVaultsBatch_returnsEmptyWhenStartIndexExceedsTotal() public {
         _registerAlice();
         _warpPastInactivity(alice);
 
-        address[] memory result = rm.checkVaultsBatch(5, 10);
+        address[] memory result = rm.getTriggerableVaultsBatch(5, 10);
         assertEq(result.length, 0);
     }
 
-    function test_checkVaultsBatch_returnsEmptyWhenBatchSizeIsZero() public {
+    function test_getTriggerableVaultsBatch_returnsEmptyWhenBatchSizeIsZero() public {
         _registerAlice();
         _warpPastInactivity(alice);
 
-        address[] memory result = rm.checkVaultsBatch(0, 0);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 0);
         assertEq(result.length, 0);
     }
 
-    function test_checkVaultsBatch_clampsToArrayEnd() public {
+    function test_getTriggerableVaultsBatch_clampsToArrayEnd() public {
         _registerAlice(); // total = 1
         _warpPastInactivity(alice);
 
         // batchSize(100) >> total(1) — must clamp gracefully
-        address[] memory result = rm.checkVaultsBatch(0, 100);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 100);
         assertEq(result.length, 1);
         assertEq(result[0], alice);
     }
 
-    function test_checkVaultsBatch_excludesZeroBalanceWallets() public {
+    function test_getTriggerableVaultsBatch_excludesZeroBalanceWallets() public {
         vm.prank(alice);
         rm.register{value: 0}(aliceBackup, INACTIVITY_PERIOD);
         vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
 
-        address[] memory result = rm.checkVaultsBatch(0, 1);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 1);
         assertEq(result.length, 0, "Zero-balance wallet must not appear in batch results");
     }
 
-    function test_checkVaultsBatch_excludesInactiveWallets() public {
+    function test_getTriggerableVaultsBatch_excludesInactiveWallets() public {
         _registerAlice();
         vm.prank(alice);
         rm.cancelRecovery(); // removes alice from registry
 
-        address[] memory result = rm.checkVaultsBatch(0, 10);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 10);
         assertEq(result.length, 0);
     }
 
-    function test_checkVaultsBatch_respectsStartIndex() public {
+    function test_getTriggerableVaultsBatch_respectsStartIndex() public {
         _registerAlice(); // index 0
 
         vm.prank(bob);
@@ -1188,12 +1188,12 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
 
         // startIndex=1 scans only bob; alice (index 0) is skipped
-        address[] memory result = rm.checkVaultsBatch(1, 1);
+        address[] memory result = rm.getTriggerableVaultsBatch(1, 1);
         assertEq(result.length, 1);
         assertEq(result[0], bob);
     }
 
-    function test_checkVaultsBatch_returnsMixedResults_onlyDueIncluded() public {
+    function test_getTriggerableVaultsBatch_returnsMixedResults_onlyDueIncluded() public {
         // alice is due, bob has pinged (not due)
         _registerAlice();
         vm.prank(bob);
@@ -1203,12 +1203,12 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(bob);
         rm.ping(); // bob resets timer
 
-        address[] memory result = rm.checkVaultsBatch(0, 2);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 2);
         assertEq(result.length, 1);
         assertEq(result[0], alice);
     }
 
-    function test_checkVaultsBatch_trimsArrayCorrectly_noTrailingZeroAddresses() public {
+    function test_getTriggerableVaultsBatch_trimsArrayCorrectly_noTrailingZeroAddresses() public {
         // Three wallets in registry, one due, batchSize=3.
         // Result must be trimmed to length 1 with no trailing address(0) entries.
         _registerAlice();
@@ -1223,12 +1223,12 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(carol);
         rm.ping();
 
-        address[] memory result = rm.checkVaultsBatch(0, 3);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 3);
         assertEq(result.length, 1, "Array must be trimmed to actual triggerable count");
         assertEq(result[0], alice);
     }
 
-    function test_checkVaultsBatch_returnsAllDueWallets_whenBatchCoversAll() public {
+    function test_getTriggerableVaultsBatch_returnsAllDueWallets_whenBatchCoversAll() public {
         _registerAlice();
         vm.prank(bob);
         rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
@@ -1237,12 +1237,12 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
 
-        address[] memory result = rm.checkVaultsBatch(0, 3);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 3);
         assertEq(result.length, 3);
     }
 
-    function test_checkVaultsBatch_isConsistentWithIsRecoveryDue() public {
-        // Every wallet returned by checkVaultsBatch must satisfy isRecoveryDue.
+    function test_getTriggerableVaultsBatch_isConsistentWithIsRecoveryDue() public {
+        // Every wallet returned by getTriggerableVaultsBatch must satisfy isRecoveryDue.
         _registerAlice();
         vm.prank(bob);
         rm.register{value: DEPOSIT_1_ETH}(bobBackup, INACTIVITY_PERIOD);
@@ -1253,7 +1253,7 @@ contract AeternumVaultTest is StdInvariant, Test {
         vm.prank(carol);
         rm.ping(); // carol not due
 
-        address[] memory result = rm.checkVaultsBatch(0, 3);
+        address[] memory result = rm.getTriggerableVaultsBatch(0, 3);
 
         for (uint256 i = 0; i < result.length; i++) {
             assertTrue(
@@ -1265,7 +1265,7 @@ contract AeternumVaultTest is StdInvariant, Test {
     // ─────────────────────────────────────────────────────────────────────────
     // SECTION 13b — KEEPER BOT INTEGRATION PATTERN
     //
-    // Verifies the bot's canonical workflow: call checkVaultsBatch as a free
+    // Verifies the bot's canonical workflow: call getTriggerableVaultsBatch as a free
     // eth_call, then submit triggerRecovery for each result.
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -1276,8 +1276,8 @@ contract AeternumVaultTest is StdInvariant, Test {
 
         vm.warp(block.timestamp + INACTIVITY_PERIOD + 1);
 
-        // Step 1: bot queries checkVaultsBatch (free eth_call)
-        address[] memory due = rm.checkVaultsBatch(0, rm.getTotalRegistered());
+        // Step 1: bot queries getTriggerableVaultsBatch (free eth_call)
+        address[] memory due = rm.getTriggerableVaultsBatch(0, rm.getTotalRegistered());
         assertEq(due.length, 2);
 
         // Step 2: bot submits triggerRecovery for each result
@@ -1294,12 +1294,12 @@ contract AeternumVaultTest is StdInvariant, Test {
         _registerAlice();
         _warpPastInactivity(alice);
 
-        address[] memory vaultsBefore = rm.checkVaultsBatch(0, 100);
+        address[] memory vaultsBefore = rm.getTriggerableVaultsBatch(0, 100);
         assertEq(vaultsBefore.length, 1);
 
         rm.triggerRecovery(alice);
 
-        address[] memory vaultsAfter = rm.checkVaultsBatch(0, 100);
+        address[] memory vaultsAfter = rm.getTriggerableVaultsBatch(0, 100);
         assertEq(vaultsAfter.length, 0, "Batch must return empty after successful recovery");
     }
 
@@ -1621,11 +1621,11 @@ contract AeternumVaultTest is StdInvariant, Test {
         rm.triggerRecovery(target); // must not revert
     }
 
-    function testFuzz_checkVaultsBatch_neverReverts(uint256 startIndex, uint256 batchSize) public view {
+    function testFuzz_getTriggerableVaultsBatch_neverReverts(uint256 startIndex, uint256 batchSize) public view {
         startIndex = bound(startIndex, 0, 1_000_000);
         batchSize = bound(batchSize, 0, 10_000);
 
-        rm.checkVaultsBatch(startIndex, batchSize); // must not revert
+        rm.getTriggerableVaultsBatch(startIndex, batchSize); // must not revert
     }
 
     // ─────────────────────────────────────────────────────────────────────────
