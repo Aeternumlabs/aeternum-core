@@ -29,6 +29,8 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 
 Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Recovery is triggered via a permissionless `triggerRecovery(wallet)` function. The Aeternum keeper bot monitors all registered vaults via the Ponder indexer and submits recovery transactions automatically when inactivity conditions are met. Because the entry point is permissionless, any external actor can also submit recovery — the contract enforces all safety conditions independently of who calls it.
 
+Additional independent keepers are planned as redundant callers against this same entry point: Gelato Network as a decentralised backup automation layer, and Chainlink CRE (Runtime Environment) for cross-chain vault coordination. Neither requires a contract change — both are simply additional permissionless callers of `triggerRecovery`.
+
 ```
 AeternumVault
 ├── User Vault (per address)
@@ -66,7 +68,9 @@ aeternum-core/
 │   └── HelperConfig.s.sol                         ← Network-aware configuration resolver
 │
 ├── audits/
-│   └── 2026-05-04_Aeternum-core_audit.pdf         ← Security audit report
+│   ├── 2026-07-07_Aeternum-core_audit_rev3.pdf    ← Security audit — Revision 3 (current, keeper architecture)
+│   ├── 2026-06-03_Aeternum-core_audit_rev2.pdf    ← Security audit — Revision 2 (fee-free model)
+│   └── 2026-05-04_Aeternum-core_audit_rev1.pdf    ← Security audit — Revision 1 (original pre-audit)
 │
 ├── lib/
 │   ├── forge-std                                  ← Foundry standard library
@@ -88,8 +92,7 @@ aeternum-core/
 | Actor | Can Do | Cannot Do |
 |---|---|---|
 | **User** | Register, deposit, send, withdrawAll, ping, update config, cancel | Access other users' funds |
-| **Aeternum keeper bot** | Call `triggerRecovery(wallet)` when inactivity conditions are met | Alter configs, redirect funds, or trigger early recovery |
-| **Anyone** | Call `triggerRecovery(wallet)` (permissionless) and `getTriggerableVaultsBatch` (view) | Force recovery before the inactivity period elapses |
+| **Any external caller** (Aeternum Labs' keeper bot, a future Gelato/CRE keeper, the beneficiary, or any other address) | Call `triggerRecovery(wallet)` once inactivity conditions are met; call `getTriggerableVaultsBatch` (view) | Alter configs, redirect funds, or trigger recovery before the inactivity period elapses |
 | **No one** | — | Pause recovery, upgrade the contract, or access user funds |
 
 ## How It Works
@@ -315,9 +318,11 @@ After deploying the contract:
 
 ## Audit
 
-### Internal Audit Report
+### Internal Audit Reports
 
-- [Aeternum-core audit report](audits/2026-06-03_Aeternum_Smart_Contract_Audit_Report.pdf)
+- [Revision 3 — 7th July 2026](audits/2026-07-07_Aeternum-core_audit_rev3.pdf) — current. Reflects the migration from Chainlink Automation to the permissionless keeper architecture.
+- [Revision 2 — 3rd June 2026](audits/2026-06-03_Aeternum-core_audit_rev2.pdf) — fee-free model migration.
+- [Revision 1 — 4th May 2026](audits/2026-05-04_Aeternum-core_audit_rev1.pdf) — original pre-audit.
 
 ### External Audit Report
 
