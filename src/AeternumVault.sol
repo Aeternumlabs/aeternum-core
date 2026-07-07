@@ -367,10 +367,11 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard {
     /**
      * @notice Returns triggerable wallet addresses within a registry slice.
      *
-     * @dev    Designed for the Aeternum keeper bot and Phase 3 CRE integration.
-     *         The keeper calls this as a free eth_call to identify wallets due for
-     *         recovery before submitting any `triggerRecovery` transactions. CRE
-     *         can call this via a single Read Chain capability DON request per batch,
+     * @dev    A free, permissionless view function — any address may call it, whether
+     *         a keeper (Aeternum Labs' bot, Phase 2 Gelato, Phase 3 CRE) or external
+     *         tooling. Typically called as a free eth_call to identify wallets due for
+     *         recovery before submitting any `triggerRecovery` transactions. CRE can
+     *         call this via a single Read Chain capability DON request per batch,
      *         avoiding per-vault round trips.
      *
      *         Returns only wallets where all three conditions are met:
@@ -442,8 +443,9 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard {
      * @notice Returns true if the wallet's recovery conditions are currently met.
      * @dev    A wallet is "due" when it is active, has a non-zero balance, and the
      *         inactivity period has fully elapsed since `lastActivity`.
-     *         The keeper bot calls this as a free eth_call before submitting
-     *         `triggerRecovery` to avoid wasting gas on ineligible wallets.
+     *         Any caller — keeper or otherwise — can call this as a free eth_call
+     *         before submitting `triggerRecovery`, to avoid wasting gas on
+     *         ineligible wallets.
      * @param  wallet The wallet address to query.
      */
     function isRecoveryDue(address wallet) external view returns (bool) {
