@@ -27,7 +27,7 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 
 ## Architecture
 
-Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Recovery is triggered via a permissionless `triggerRecovery(wallet)` function. The Aeternum keeper bot monitors all registered vaults via the Ponder indexer and submits recovery transactions automatically when inactivity conditions are met. Because the entry point is permissionless, any external actor can also submit recovery — the contract enforces all safety conditions independently of who calls it.
+Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Recovery is triggered via a permissionless `triggerRecovery(wallet)` function. The Aeternum keeper bot pre-filters registered vaults against its own Ponder-indexed database, re-validates each candidate on-chain via `isRecoveryDue(wallet)` (batched into a single multicall) to catch anything the database missed, then submits confirmed wallets for recovery — typically batching several `triggerRecovery` calls into one transaction via Multicall3 for gas efficiency. Because the entry point is permissionless, any external actor can also submit recovery individually — the contract enforces all safety conditions independently of who calls it or how many wallets are included in a given transaction.
 
 Additional independent keepers are planned as redundant callers against this same entry point: Gelato Network as a decentralised backup automation layer, and Chainlink CRE (Runtime Environment) for cross-chain vault coordination. Neither requires a contract change — both are simply additional permissionless callers of `triggerRecovery`.
 
@@ -40,8 +40,16 @@ AeternumVault
 │   └── lastActivity     — timestamp of last on-chain interaction
 │
 └── Keeper Interface (permissionless)
-    ├── triggerRecovery(wallet)         — permissionless recovery entry point
-    └── getTriggerableVaultsBatch(start, size)   — batch view for efficient keeper scanning
+    ├── triggerRecovery(wallet)                 — permissionless recovery entry point
+    ├── isRecoveryDue(wallet)                   — free view; used by the Aeternum Labs bot to
+    │                                             re-validate DB candidates before submission
+    └── getTriggerableVaultsBatch(start, size)  — permissionless batch view for querying due
+                                                  wallets directly from chain state; not used
+                                                  by the Aeternum Labs bot's live scan path,
+                                                  which relies on its own indexed database
+                                                  instead. Available to any other keeper,
+                                                  researcher, or tool that wants to query due
+                                                  wallets without running its own indexer.
 ```
 
 ## Repository Structure
@@ -111,7 +119,7 @@ If a user wants to prove liveness without moving funds, they call `ping()` — a
 
 **4. Recovery triggers**
 
-The Aeternum keeper bot continuously monitors all registered vaults via the Ponder indexer. When a vault's inactivity period has elapsed and its balance is non-zero, the bot calls `triggerRecovery(wallet)`, transferring the escrowed ETH to the registered backup address. The function is permissionless — any external actor, including the beneficiary, can also submit the call. The contract validates all conditions independently of the caller.
+The Aeternum keeper bot pre-filters registered vaults against its own Ponder-indexed database, then re-validates each candidate directly on-chain via `isRecoveryDue(wallet)` to rule out anything the database missed. Confirmed wallets are submitted for recovery — often batched together in a single transaction via Multicall3 — each executing `triggerRecovery(wallet)`, which transfers the escrowed ETH to the registered backup address. The function is permissionless — any external actor, including the beneficiary, can also submit the call individually. The contract validates all conditions independently of the caller, and a failure on one wallet in a batch has no effect on any other wallet in that same transaction.
 
 **5. Failed recovery**
 
@@ -135,46 +143,46 @@ Users can call `cancelRecovery()` at any time to withdraw their full balance and
 
 - **[Foundry](https://book.getfoundry.sh/getting-started/installation)** — Development framework
 
-  ```bash
+```bash
   curl -L https://foundry.paradigm.xyz | bash
   foundryup
-  ```
+```
 
 - **[OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts)** — ReentrancyGuard
 
-  ```bash
+```bash
   forge install OpenZeppelin/openzeppelin-contracts --no-commit
-  ```
+```
 
 ### Optional
 
 - **[Slither](https://github.com/crytic/slither)** — Static analysis
 
-  ```bash
+```bash
   pip install slither-analyzer --break-system-packages
-  ```
+```
 
 - **[Echidna](https://github.com/crytic/echidna)** — Property-based fuzz testing
 
-  ```bash
+```bash
   docker pull ghcr.io/crytic/echidna/echidna
-  ```
+```
 
 - **[Solhint](https://github.com/protofire/solhint)** — Linting
 
-  ```bash
+```bash
   npm install -g solhint
-  ```
+```
 
 - **[lcov](https://github.com/linux-test-project/lcov)** — Coverage reports
 
-  ```bash
+```bash
   # Ubuntu
   sudo apt install lcov
 
   # macOS
   brew install lcov
-  ```
+```
 
 ## Quickstart
 
@@ -307,7 +315,7 @@ After deploying the contract:
 - **ReentrancyGuard** applied as a secondary defence layer on all state-changing functions
 - **No admin backdoors** — the contract contains no owner or privileged roles capable of pausing recovery, redirecting funds, or accessing user balances
 - **Permissionless entry point safety** — `triggerRecovery(wallet)` delegates entirely to `_executeRecovery`, which re-validates all conditions from storage before acting. The caller supplies only a wallet address — they cannot redirect funds, force early recovery, or cause double-spend regardless of who they are
-- **O(1) registry removal** — swap-and-pop with 1-indexed mappings prevents array corruption during concurrent recovery and cancellation
+- **O(1) registry removal** — swap-and-pop with 1-indexed mappings prevents array corruption across any sequence of removals, whether from separate transactions, multiple `triggerRecovery` calls batched into a single transaction, or several keepers acting independently
 - **Failed recovery handling** — after `MAX_RECOVERY_ATTEMPTS` consecutive failures, the vault is permanently abandoned and the balance remains self-claimable via `withdrawAll()` or `send()`
 - **Direct ETH transfer rejection** — `receive()` explicitly reverts, preventing accidental ETH loss
 
