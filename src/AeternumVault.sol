@@ -602,9 +602,16 @@ contract AeternumVault is IAeternumVault, ReentrancyGuard {
      *           3. Update the moved element's index mapping.
      *           4. Pop the (now-duplicate) last element and delete the mapping entry.
      *
-     *         This preserves array integrity when multiple wallets are removed within
-     *         a single call, because s_walletIndexPlusOne is always updated to
-     *         reflect the current position of any moved element.
+     *         Called at most once per `_executeRecovery` invocation — this function
+     *         itself never loops over multiple wallets. Correctness across many
+     *         sequential removals (whether from separate transactions, multiple
+     *         `triggerRecovery` calls batched into one transaction by an external
+     *         caller, or several keepers acting independently) relies on nothing
+     *         more than standard EVM execution: each call fully completes its
+     *         read-modify-write on `s_registeredWallets` and `s_walletIndexPlusOne`
+     *         before the next one begins, so every lookup always sees the current,
+     *         correct index — regardless of how many prior removals happened in the
+     *         same block or the same transaction.
      *
      * @param wallet Address to remove from the registry.
      */
