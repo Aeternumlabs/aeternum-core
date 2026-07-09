@@ -34,16 +34,16 @@ Additional independent keepers are planned as redundant callers against this sam
 ```
 AeternumVault
 ├── User Vault (per address)
-│   ├── balance          — ETH held in escrow
-│   ├── backupAddress    — recovery destination
-│   ├── inactivityPeriod — seconds before recovery triggers
-│   └── lastActivity     — timestamp of last on-chain interaction
+│   ├── balance                                 ← ETH held in escrow
+│   ├── backupAddress                           ← recovery destination
+│   ├── inactivityPeriod                        ← seconds before recovery triggers
+│   └── lastActivity                            ← timestamp of last on-chain interaction
 │
 └── Keeper Interface (permissionless)
-    ├── triggerRecovery(wallet)                 — permissionless recovery entry point
-    ├── isRecoveryDue(wallet)                   — free view; used by the Aeternum Labs bot to
+    ├── triggerRecovery(wallet)                 ← permissionless recovery entry point
+    ├── isRecoveryDue(wallet)                   ← free view; used by the Aeternum Labs bot to
     │                                             re-validate DB candidates before submission
-    └── getTriggerableVaultsBatch(start, size)  — permissionless batch view for querying due
+    └── getTriggerableVaultsBatch(start, size)  ← permissionless batch view for querying due
                                                   wallets directly from chain state; not used
                                                   by the Aeternum Labs bot's live scan path,
                                                   which relies on its own indexed database
