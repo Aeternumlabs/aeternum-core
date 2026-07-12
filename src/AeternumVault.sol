@@ -39,9 +39,14 @@ import {IAeternumVault} from "./interfaces/IAeternumVault.sol";
  *           the Aeternum Labs bot. Independent failure modes guarantee liveness.
  *           `triggerRecovery` interface is unchanged.
  *
- *         Phase 3: CRE (Chainlink Runtime Environment) added for cross-chain vault
- *           coordination. `triggerRecovery(wallet)` remains the single entry point
- *           on all chains — CRE is simply another permissionless caller.
+ *         Phase 3: Chainlink CRE (Runtime Environment) added as a multi-chain
+ *           orchestrator — a single off-chain service running one independent
+ *           workflow per chain, each calling `triggerRecovery(wallet)` on that
+ *           chain's own deployment of this contract. No messaging or state
+ *           dependency exists between chains; `triggerRecovery` remains the
+ *           single entry point on each independent deployment, and CRE is simply
+ *           another permissionless caller on that chain — identical in role to
+ *           the Aeternum Labs bot and Gelato running on the same chain.
  *
  *         TRUST MODEL
  *         ─────────────────────────────────────────────────────────────────────
