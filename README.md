@@ -27,9 +27,9 @@ Aeternum Core lets users store ETH in a self-sovereign vault, send and receive f
 
 ## Architecture
 
-Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Recovery is triggered via a permissionless `triggerRecovery(wallet)` function. The Aeternum keeper bot pre-filters registered vaults against its own Ponder-indexed database, re-validates each candidate on-chain via `isRecoveryDue(wallet)` (batched into a single multicall) to catch anything the database missed, then submits confirmed wallets for recovery — typically batching several `triggerRecovery` calls into one transaction via Multicall3 for gas efficiency. Because the entry point is permissionless, any external actor can also submit recovery individually — the contract enforces all safety conditions independently of who calls it or how many wallets are included in a given transaction.
+Aeternum Core is a single-contract architecture. Each registered wallet has its own isolated vault within the contract — balances are tracked individually, never pooled. Recovery is triggered via a permissionless `triggerRecovery(wallet)` function: any external address may call it once a wallet's inactivity period has elapsed, and the contract independently re-validates all safety conditions regardless of who calls it.
 
-Additional independent keepers are planned as redundant callers against this same entry point: Gelato Network as a decentralised backup automation layer, and Chainlink CRE (Runtime Environment) for cross-chain vault coordination. Neither requires a contract change — both are simply additional permissionless callers of `triggerRecovery`.
+In practice, recovery is automated by the Aeternum Labs keeper bot, with Gelato and Chainlink CRE planned as additional independent keepers in later phases. None of this requires a contract change — every keeper, present or future, is just another permissionless caller of `triggerRecovery`. For the full keeper architecture — off-chain discovery, on-chain validation, batched execution, and the multi-chain rollout — see the [Keeper Network documentation](https://www.aeternumvault.xyz/docs/architecture/keeper-network).
 
 ```
 AeternumVault
@@ -119,7 +119,7 @@ If a user wants to prove liveness without moving funds, they call `ping()` — a
 
 **4. Recovery triggers**
 
-The Aeternum keeper bot pre-filters registered vaults against its own Ponder-indexed database, then re-validates each candidate directly on-chain via `isRecoveryDue(wallet)` to rule out anything the database missed. Confirmed wallets are submitted for recovery — often batched together in a single transaction via Multicall3 — each executing `triggerRecovery(wallet)`, which transfers the escrowed ETH to the registered backup address. The function is permissionless — any external actor, including the beneficiary, can also submit the call individually. The contract validates all conditions independently of the caller, and a failure on one wallet in a batch has no effect on any other wallet in that same transaction.
+When a wallet's inactivity period has elapsed and its balance is non-zero, any external caller may call `triggerRecovery(wallet)` to transfer the escrowed ETH to the registered backup address. The contract validates all conditions independently of the caller — the caller supplies only a wallet address and has no influence over the outcome. In practice, this is automated by the Aeternum Labs keeper bot in the current phase; see [Keeper Network](https://www.aeternumvault.xyz/docs/architecture/keeper-network) for how it discovers, validates, and submits due wallets.
 
 **5. Failed recovery**
 
