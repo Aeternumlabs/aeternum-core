@@ -6,7 +6,7 @@ import {IAeternumVault} from "./interfaces/IAeternumVault.sol";
 
 /**
  * @title  AeternumVault
- * @author Ndubuisi Ugwuja
+ * @author Aeternum Labs
  * @notice A non-custodial, automated inheritance protocol for Ethereum assets.
  *
  *
