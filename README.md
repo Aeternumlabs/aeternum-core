@@ -5,7 +5,7 @@
 [![Slither](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/slither.yml/badge.svg)](https://github.com/Aeternumlabs/aeternum-core/actions/workflows/slither.yml)
 [![License: BUSL 1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](https://github.com/Aeternumlabs/aeternum-core/blob/main/LICENSE.md)
 
-A non-custodial, automated inheritance protocol for Ethereum assets.
+A trustless, non-custodial inheritance protocol for Ethereum assets.
 
 Aeternum Core lets users store ETH in a self-sovereign vault, send and receive funds like a normal wallet, and configure a backup address with an inactivity timer. If the user goes silent beyond their chosen period — lost keys, death, incapacitation — the protocol automatically transfers their ETH to the backup address. No custodians. No admin backdoors. Just code.
 
